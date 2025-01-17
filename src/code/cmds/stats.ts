@@ -38,14 +38,15 @@ export async function main(ns: NS) {
   const query: ((ns: NS, x: _serverData) => boolean)[] = [];
 
   const flags = ns.flags([
-    ['target', 'all'],
     ['single', false], // filter for only servers that are worth single attack
     ['hack', false], // filter for only servers that can be hacked
+    ['deploy', false], // filter for only servers that we can deploy code on
   ])
 
   // if argument is provided, only examine that server
-  if (flags['target'] != 'all') {
-    if (ns.serverExists(flags['target'] as string)) servers.push(flags['target'] as string);
+  if ((flags['_'] as string[]).length != 0) {
+    const t = (flags['_'] as string[])[0];
+    if (ns.serverExists(t)) servers.push(t);
     else {
       ns.tprintf("ERROR: Server does not exist.");
       return;
@@ -54,6 +55,7 @@ export async function main(ns: NS) {
 
   if (flags['single']) query.push(filterSingle);
   if (flags['hack']) query.push(filterHack);
+  if (flags['deploy']) query.push(filterDeploy);
 
   servers.forEach(x => {
     const s = analyze(ns, x);
@@ -170,4 +172,8 @@ function filterSingle(ns: NS, inp: _serverData): boolean {
 
 function filterHack(ns: NS, inp: _serverData): boolean {
   return inp['Max Money'] > 0 && ns.getHackingLevel() >= inp['Difficulty'] && ns.hasRootAccess(inp['Name']);
+}
+
+function filterDeploy(ns: NS, inp: _serverData): boolean {
+  return ns.hasRootAccess(inp['Name']) && inp['RAM'] > 0;
 }
