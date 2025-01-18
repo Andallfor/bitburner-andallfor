@@ -55,7 +55,7 @@ export async function main(ns: NS) {
             await weaken(ns, target, nWeak, weak);
 
             // regrow
-            const growReq = Math.ceil(ns.growthAnalyze(target, moneyStart / ns.getServerMoneyAvailable(target)))
+            const growReq = Math.ceil(ns.growthAnalyze(target, moneyStart / ns.getServerMoneyAvailable(target)));
             const growSec = ns.growthAnalyzeSecurity(growReq, target);
             ns.tprintf((growSec > maxWeak ? 'ERROR: ' : '') + `Grow Increase: ${growSec} (${maxWeak})`)
             ns.tprintf((growReq > nGrow ? 'ERROR: ' : '') + `Grow Needed: ${growReq} (${nGrow})`)

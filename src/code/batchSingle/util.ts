@@ -1,19 +1,9 @@
 import { NS } from "@ns";
-import { allDeployableServers, attackType, getRam } from "code/util/util";
-import { HOME_RESERVED } from "code/batchSingle/main";
-
-interface distributeResults {
-    hack: [string, number][], // where number is number of threads
-    grow: [string, number],
-    weakOne: [string, number][],
-    weakTwo: [string, number][],
-    // tracks what servers have been affected by hack/grow and their remaining ram
-    // TODO: this allows chaining distributes together
-    modifiedServers: Record<string, number>,
-}
+import { allDeployableServers, attackType, getRam, getScript } from "code/util/util";
+import { HOME_RESERVED, distributeResults } from "code/batchSingle/constants";
 
 /** Find the best servers to run each action on */
-export function distribute(ns: NS, hack: number, weakOne: number, grow: number, weakTwo: number, includeHome: boolean): distributeResults {
+export function distribute(ns: NS, hack: number, weakOne: number, grow: number, weakTwo: number, includeHome: boolean): distributeResults | undefined {
     const servers = allDeployableServers(ns, includeHome);
     // highest ram first
     servers.sort((a, b) => 
@@ -29,67 +19,106 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
         modifiedServers: {},
     };
 
-    // first try and allocate hack and grow
-    let growValid = false, hackValid = false;
-    for (let i = 0; i < servers.length; i++) {
-        // prioritize grow first since it will take more threads than hack
-        const s = servers[i];
-        let ava = ns.getServerMaxRam(s) * (s == 'home' ? HOME_RESERVED : 1) - ns.getServerUsedRam(s);
-        if (!growValid) {
-            const growRamRemaining = grow * getRam(ns, 'g');
-            if (growRamRemaining <= ava) {
-                growValid = true;
-                output.grow = [s, grow];
-                ava -= growRamRemaining;
-            } else {
-                // since grow must be done in one iteration we know this is impossible
-                // since we are past the first element (the highest ram value) and so all servers will have less ram
-                // and also be impossible
-                ns.tprintf(`ERROR: Cannot distribute ${grow} grow threads (max = ${runnable(ns, servers[0], 'g')})`);
-                ns.exit();
-            }
-        }
+    // note that we need all grows to occur from the same script
+    // and prefer hacks to be the same
+    // but only grow is necessary since multi grows will reduce effectiveness and therefore eventually cause server to run out of money
+    // while hack's reduced effectiveness just means we dont make as much money as possible
 
-        // now distribute hack
-        if (hack * getRam(ns, 'h') <= ava) {
-            // the rest of our hack threads fits
-            output.hack.push([s, hack]);
-            ava -= hack * getRam(ns, 'h');
-            hack = 0;
-            hackValid = true;
+    // allocate grow
+    if (grow != 0) {
+        const s = servers[0];
+        let ava = getUsableRam(ns, s, output.modifiedServers);
+        const needed = grow * getRam(ns, 'g');
+
+        if (ava >= needed) {
+            output.grow = [s, grow];
+            output.modifiedServers[s] = ava - needed;
+            grow = 0;
         } else {
-            // on first iteration the server may be filled by grow but the next server might have enough space - so check ahead
-            // to see if it can - if it cant then fill up current server, otherwise wait
-            if (i == 0 && runnable(ns, servers[1], 'h') >= hack) continue
-
-            // fit as many hacks as possible into the server
-            const num = runnable(ns, s, 'h');
-            output.hack.push([s, num]);
-            hack -= num;
-            ava -= num * getRam(ns, 'h');
+            // since grow must be done in one iteration we know this is impossible
+            // since we are past the first element (the highest ram value) and so all servers will have less ram
+            // and also be impossible
+            ns.tprintf(`ERROR: Cannot distribute ${grow} grow threads (max=${runnable(ns, servers[0], 'g')})`);
+            return undefined;
         }
-
-        output.modifiedServers[s] = ava;
-
-        if (growValid && hackValid) break;
     }
 
-    if (!growValid || !hackValid) {
-        ns.tprintf(`ERROR: Unable to fully allocate hack/grow thread! (Overflow: g=${grow} h=${hack}`);
-        ns.exit();
+    // allocate hack
+    servers.forEach((s, i) => {
+        if (hack == 0) return;
+
+        const ava = getUsableRam(ns, s, output.modifiedServers);
+        let t = Math.floor(ava / getRam(ns, 'h'));
+
+        // on first iteration the server may be filled by grow but the next server might have enough space - so check ahead
+        // to see if it can - if it cant then fill up current server, otherwise wait
+        if (i == 0 && t < hack && getUsableRam(ns, servers[1], output.modifiedServers) >= hack * getRam(ns, 'h')) return;
+
+        const n = Math.min(t, hack);
+        if (n != 0) {
+            t -= n;
+            hack -= n;
+            output.hack.push([s, n]);
+
+            output.modifiedServers[s] = ava - n * getRam(ns, 'h');
+        }
+    });
+
+    if (hack != 0) {
+        ns.tprintf(`ERROR: Unable to fully allocate hack thread! (Overflow: h=${hack})`);
+        return undefined;
     }
+
+    if (output.hack.length > 1) ns.tprintf(`WARNING: Hacking will occur over ${output.hack.length} attacks`);
 
     // now distribute weaks
     // sort modifiedServers by lowest ram, then fill until we run out of weakOne/weakTwo threads
-    // TODO:
+    servers.reverse();
+    servers.forEach(s => {
+        let ava = getUsableRam(ns, s, output.modifiedServers);
 
-    let weak = weakOne + weakTwo;
+        // TODO: remove code duplication
+        let t = Math.floor(ava / getRam(ns, 'w'));
+        if (weakOne != 0) {
+            const n = Math.min(t, weakOne);
+            if (n != 0) {
+                t -= n;
+                weakOne -= n;
+                ava -= n * getRam(ns, 'w');
+
+                output.weakOne.push([s, n]);
+            }
+        }
+
+        if (weakTwo != 0) {
+            const n = Math.min(t, weakTwo);
+            if (n != 0) {
+                t -= n;
+                weakTwo -= n;
+                ava -= n * getRam(ns, 'w');
+
+                output.weakTwo.push([s, n]);
+            }
+        }
+
+        output.modifiedServers[s] = ava;
+    });
+
+    if (weakOne != 0 || weakTwo != 0) {
+        ns.tprintf(`ERROR: Unable to fully allocate weak threads! (Overflow: 1=${weakOne} 2=${weakTwo})`);
+        return undefined;
+    }
 
     return output;
 }
 
-export function deploy(res: distributeResults) {
-    // TODO: remember to account for 0 threads
+function getUsableRam(ns: NS, server: string, modifiedServers: Record<string, number>) {
+    if (server in modifiedServers) return modifiedServers[server];
+    
+    const max = ns.getServerMaxRam(server) * (server == 'home' ? HOME_RESERVED : 1);
+    const cur = ns.getServerUsedRam(server);
+
+    return max - cur;
 }
 
 export function runnable(ns: NS, server: string, attack: attackType) {
@@ -101,7 +130,7 @@ export function runnable(ns: NS, server: string, attack: attackType) {
 }
 
 // note that this is guaranteed to never underestimate threads needed
-export function weakenThreadsNeeded(ns: NS, amt: number, thres = 0.01) {
+export function weakenThreadsNeeded(ns: NS, amt: number, thres = 0.05) { // 0.05 is base impact of a thread
     let ceil = 10_000;
     let floor = 1;
 
@@ -123,8 +152,9 @@ export function weakenThreadsNeeded(ns: NS, amt: number, thres = 0.01) {
         else if (amt < w) ceil = m;
         else floor = m;
 
-        if (ind++ > 20) break;
+        ind++;
+        if (ind > 20) break;
     }
 
-    return -1;
+    return Math.ceil((ceil + floor) / 2);
 }
