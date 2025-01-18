@@ -38,7 +38,7 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
             // since grow must be done in one iteration we know this is impossible
             // since we are past the first element (the highest ram value) and so all servers will have less ram
             // and also be impossible
-            ns.tprintf(`ERROR: Cannot distribute ${grow} grow threads (max=${runnable(ns, servers[0], 'g')})`);
+            ns.tprint(`ERROR: Cannot distribute ${grow} grow threads (max=${runnable(ns, servers[0], 'g')})`);
             return undefined;
         }
     }
@@ -65,11 +65,11 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
     });
 
     if (hack != 0) {
-        ns.tprintf(`ERROR: Unable to fully allocate hack thread! (Overflow: h=${hack})`);
+        ns.tprint(`ERROR: Unable to fully allocate hack thread! (Overflow: h=${hack})`);
         return undefined;
     }
 
-    if (output.hack.length > 1) ns.tprintf(`WARNING: Hacking will occur over ${output.hack.length} attacks`);
+    if (output.hack.length > 1) ns.tprint(`WARNING: Hacking will occur over ${output.hack.length} attacks`);
 
     // now distribute weaks
     // sort modifiedServers by lowest ram, then fill until we run out of weakOne/weakTwo threads
@@ -105,7 +105,7 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
     });
 
     if (weakOne != 0 || weakTwo != 0) {
-        ns.tprintf(`ERROR: Unable to fully allocate weak threads! (Overflow: 1=${weakOne} 2=${weakTwo})`);
+        ns.tprint(`ERROR: Unable to fully allocate weak threads! (Overflow: 1=${weakOne} 2=${weakTwo})`);
         return undefined;
     }
 

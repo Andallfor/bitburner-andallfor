@@ -33,6 +33,8 @@ export async function main(ns: NS) {
     const pids: number[] = [];
     let n = 0;
     toRun.forEach(([server, threads]) => {
+        if (threads == 0) return;
+
         ns.scp(share, server);
         const pid = ns.exec(share, server, threads);
         if (pid != 0) {
@@ -44,7 +46,7 @@ export async function main(ns: NS) {
     // getSharePower takes a frame to update
     await ns.sleep(100);
     // cant use settimeout; getSharePower errors out
-    ns.tprintf(`Running share with ${n} threads for a ${ns.formatNumber((1 - ns.getSharePower()) * 100, undefined, undefined, true)}%% increase`)
+    ns.tprintf(`Running share with ${n} threads for a ${ns.formatNumber(ns.getSharePower() * 100 - 100, undefined, undefined, true)}%% increase`)
 
     ns.atExit(() => pids.forEach(p => ns.kill(p)));
     while (true) {
