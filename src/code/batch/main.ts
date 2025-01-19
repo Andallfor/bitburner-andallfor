@@ -1,7 +1,7 @@
 import { NS } from '@ns';
-import { distribute, weakenThreadsNeeded } from 'code/batchSingle/util';
-import { BATCH_INTERVAL, BATCH_STEP, distributeResults } from './constants';
-import { attackType, getScript } from '../util/util';
+import { distribute, weakenThreadsNeeded } from '/code/batch/util';
+import { BATCH_INTERVAL, BATCH_STEP, distributeResults } from '/code/batch/constants';
+import { attackType, getScript } from '/code/util/util';
 
 // does not require formulas but will only perform one saturated batch attack at a time
 // TODO: for simplicity we assume home does not have any cores
@@ -38,6 +38,8 @@ export async function main(ns: NS) {
 
         let runTime = 0;
         for (let i = 0; i < sat; i++) {
+            // TODO: sometimes we hack more than expected (due to leveling up)
+            // so adjust grow to account for that (add buffer)
             const hackAmt = ns.getServerMaxMoney(target) * percent;
             const hack = Math.floor(ns.hackAnalyzeThreads(target, hackAmt));
             const weakOne = weakenThreadsNeeded(ns, ns.hackAnalyzeSecurity(hack));
@@ -62,7 +64,7 @@ export async function main(ns: NS) {
     }
 }
 
-async function prep(ns: NS, target: string, includeHome: boolean) {
+export async function prep(ns: NS, target: string, includeHome: boolean) {
     const minSec = ns.getServerMinSecurityLevel(target);
     const curSec = ns.getServerSecurityLevel(target);
     const maxMon = ns.getServerMaxMoney(target);
@@ -80,7 +82,7 @@ async function prep(ns: NS, target: string, includeHome: boolean) {
 
     // check if we need to increase money as well
     if (maxMon != curMon) {
-        grow = Math.ceil(ns.growthAnalyze(target, ns.getServerMaxMoney(target) / ns.getServerMoneyAvailable(target)));
+        grow = Math.ceil(ns.growthAnalyze(target, ns.getServerMaxMoney(target) / Math.max(ns.getServerMoneyAvailable(target), 1)));
         weakTwo = weakenThreadsNeeded(ns, ns.growthAnalyzeSecurity(grow, target));
     }
 
