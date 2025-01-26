@@ -1,4 +1,4 @@
-import { NS } from "@ns";
+import { HackingFormulas, NS, Server } from "@ns";
 import { allDeployableServers, attackType, getRam, getScript } from "code/util/util";
 import { HOME_RESERVED, distributeResults } from "/code/batch/constants";
 
@@ -167,4 +167,15 @@ export function weakenThreadsNeeded(ns: NS, amt: number, thres = 0.05) { // 0.05
     }
 
     return Math.ceil((ceil + floor) / 2);
+}
+
+export function batchThreads(ns: NS, target: string, percent: number) {
+    const hackAmt = ns.getServerMaxMoney(target) * percent;
+    const hack = Math.floor(ns.hackAnalyzeThreads(target, hackAmt));
+    const weakOne = weakenThreadsNeeded(ns, ns.hackAnalyzeSecurity(hack));
+    // over count as buffer
+    const grow = Math.ceil(1.1 * ns.growthAnalyze(target, ns.getServerMaxMoney(target) / Math.max(ns.getServerMaxMoney(target) - hackAmt, 1)));
+    const weakTwo = weakenThreadsNeeded(ns, ns.growthAnalyzeSecurity(grow));
+
+    return [hack, weakOne, grow, weakTwo];
 }

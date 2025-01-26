@@ -1,5 +1,5 @@
 import { NS } from '@ns';
-import { distribute, weakenThreadsNeeded } from '/code/batch/util';
+import { batchThreads, distribute, weakenThreadsNeeded } from '/code/batch/util';
 import { BATCH_INTERVAL, BATCH_STEP, distributeResults } from '/code/batch/constants';
 import { attackType, getScript } from '/code/util/util';
 
@@ -38,14 +38,7 @@ export async function main(ns: NS) {
 
         let runTime = 0;
         for (let i = 0; i < sat; i++) {
-            // TODO: sometimes we hack more than expected (due to leveling up)
-            // so adjust grow to account for that (add buffer)
-            const hackAmt = ns.getServerMaxMoney(target) * percent;
-            const hack = Math.floor(ns.hackAnalyzeThreads(target, hackAmt));
-            const weakOne = weakenThreadsNeeded(ns, ns.hackAnalyzeSecurity(hack));
-            const grow = Math.ceil(ns.growthAnalyze(target, ns.getServerMaxMoney(target) / Math.max(ns.getServerMaxMoney(target) - hackAmt, 1)));
-            const weakTwo = weakenThreadsNeeded(ns, ns.growthAnalyzeSecurity(grow));
-
+            const [hack, weakOne, grow, weakTwo] = batchThreads(ns, target, percent);
             const dist = distribute(ns, hack, weakOne, grow, weakTwo, includeHome);
             if (!dist) {
                 ns.tprint(`ERROR: Unable to run batch step (${i} batches are active)`);
@@ -58,8 +51,8 @@ export async function main(ns: NS) {
             await ns.sleep(BATCH_INTERVAL);
         }
 
-        await ns.sleep(runTime);
         ns.print(`Completed cycle r=${ns.tFormat(runTime)}`);
+        await ns.sleep(runTime);
         await prep(ns, target, includeHome);
     }
 }

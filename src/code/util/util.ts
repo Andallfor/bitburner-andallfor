@@ -67,3 +67,22 @@ export function msToTime(ms: number) {
   else if (hours < 24) return hours + " Hrs";
   else return days + " Days"
 }
+
+/** [server, threads] -> [number of threads, script pids[]] */
+export function run(ns: NS, data: [string, number][], file: string, args: string[] = []): [number, number[]] {
+  const pids: number[] = [];
+  let n = 0;
+
+  data.forEach(([server, threads]) => {
+    if (threads <= 0) return;
+
+    ns.scp(file, server);
+    const pid = ns.exec(file, server, threads, ...args);
+    if (pid != 0) {
+        pids.push(pid);
+        n += threads;
+    }
+  });
+
+  return [n, pids];
+}

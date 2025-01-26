@@ -1,25 +1,21 @@
 import { NS } from "@ns";
+import { run } from "../util/util";
 
 // only uses purchased servers
 export async function main(ns: NS) {
     const flags = ns.flags([
-        ['h', 1], // home ram reserved (1 = dont touch home)
         ['b', []], // servers blacklist
         ['w', []], // servers whitelist - higher precedence than blacklist
+        ['h', -1], // amt of gibs to not touch on home
     ]);
 
-    const homeReserved = flags['h'] as number;
+    const h = flags['h'] as number;
     const share = '/code/util/share.js';
     const cost = ns.getScriptRam(share);
 
     const toRun: [string, number][] = [];
 
-    if (homeReserved < 1) {
-        toRun.push([
-            'home', 
-            Math.floor((ns.getServerMaxRam('home') * homeReserved - ns.getServerUsedRam('home')) / cost)
-        ]);
-    }
+    if (h != -1) toRun.push(['home', Math.floor((unused(ns, 'home') - h) / cost)]);
 
     const whitelist = flags['w'] as string[];
     const blacklist = flags['b'] as string[];
@@ -27,21 +23,10 @@ export async function main(ns: NS) {
         if (whitelist.length != 0 && !whitelist.includes(x)) return;
         else if (blacklist.includes(x)) return;
 
-        toRun.push([x, Math.floor((ns.getServerMaxRam(x) - ns.getServerUsedRam(x)) / cost)])
+        toRun.push([x, Math.floor(unused(ns, x) / cost)])
     });
 
-    const pids: number[] = [];
-    let n = 0;
-    toRun.forEach(([server, threads]) => {
-        if (threads == 0) return;
-
-        ns.scp(share, server);
-        const pid = ns.exec(share, server, threads);
-        if (pid != 0) {
-            pids.push(pid);
-            n += threads;
-        }
-    });
+    const [n, pids] = run(ns, toRun, share);
 
     // getSharePower takes a frame to update
     await ns.sleep(100);
@@ -52,4 +37,8 @@ export async function main(ns: NS) {
     while (true) {
         await ns.sleep(1_000);
     }
+}
+
+function unused(ns: NS, server: string) {
+    return ns.getServerMaxRam(server) - ns.getServerUsedRam(server);
 }

@@ -3,23 +3,28 @@ import { allServers, allServersString } from "../util/util";
 
 export async function main(ns: NS) {
     const solutions: Record<string, (ns: NS, file: string, server: string) => string> = {
-        'Array Jumping Game': arrayJumpingGame,
+        'Array Jumping Game': arrayJumpingGameI,
         'Square Root': squareRoot,
         'Compression II: LZ Decompression': compressionII,
-        'Encryption II: Vigenère Cipher': vigenereCipher
+        'Encryption II: Vigenère Cipher': vigenereCipher,
+        'Array Jumping Game II': arrayJumpingGameII,
     };
 
     const cct = ns.codingcontract;
     const flags = ns.flags([
-        ['u', false], // unit test
+        ['u', ''], // unit test
         ['c', false], // clear all contracts on home
     ]);
+    
+    const u = flags['u'] as string;
 
     if (flags['c']) {
         const contracts = ns.ls('home', '.cct');
         contracts.forEach(x => ns.rm(x));
-    } else if (flags['u']) {
+    } else if (u.length != 0) {
         for (const [name, func] of Object.entries(solutions)) {
+            if (u != 'all' && !name.toLowerCase().includes(u.toLowerCase())) continue;
+
             let success = true;
             for (let i = 0; i < 50; i++) {
                 const contract = cct.createDummyContract(name);
@@ -52,7 +57,7 @@ export async function main(ns: NS) {
     }
 }
 
-function arrayJumpingGame(ns: NS, server: string, file: string): string {
+function arrayJumpingGameI(ns: NS, server: string, file: string): string {
     const cct = ns.codingcontract;
     const data = cct.getData(file, server) as number[];
 
@@ -65,6 +70,34 @@ function arrayJumpingGame(ns: NS, server: string, file: string): string {
     }
 
     return '1';
+}
+
+function arrayJumpingGameII(ns: NS, server: string, file: string): string {
+    const cct = ns.codingcontract;
+    const data = cct.getData(file, server) as number[];
+
+    let steps = 1;
+    for (let i = 0; i < data.length;) {
+        const currentDist = i + data[i];
+
+        if (currentDist >= data.length - 1) break;
+
+        let bestDist = 0;
+        let bestInd = 0;
+        for (let j = i + 1; j < currentDist + 1; j++) {
+            const nextDist = j + data[j];
+            if (nextDist > bestDist && nextDist > currentDist) {
+                bestDist = nextDist;
+                bestInd = j;
+            }
+        }
+
+        if (bestInd == 0) return '0';
+        steps++;
+        i = bestInd;
+    }
+
+    return '' + steps;
 }
 
 function squareRoot(ns: NS, server: string, file: string): string {

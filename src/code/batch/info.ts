@@ -1,7 +1,7 @@
 import { NS } from "@ns";
 import { allDeployableServers, allHackableServers, getRam, msToTime } from "../util/util";
 import { BATCH_INTERVAL, BATCH_STEP } from "./constants";
-import { weakenThreadsNeeded } from "./util";
+import { batchThreads, weakenThreadsNeeded } from "./util";
 
 type _bi = 'server' | 'prep' | 'cycleTime' | 'saturation' | 'totalRam' | 'profitPerSec' | 'profitPerRam';
 
@@ -69,7 +69,7 @@ export async function main(ns: NS) {
         const hackThreads = percent / fh.hackPercent(server, p);
         const weakOneThreads = weakenThreadsNeeded(ns, ns.hackAnalyzeSecurity(hackThreads));
         server.moneyAvailable -= server.moneyAvailable * percent;
-        const growThreads = fh.growThreads(server, p, server.moneyMax!);
+        const growThreads = Math.ceil(fh.growThreads(server, p, server.moneyMax!) * 1.1);
         const weakTwoThreads = weakenThreadsNeeded(ns, ns.growthAnalyzeSecurity(growThreads));
 
         const ram = hackThreads * getRam(ns, 'h') + (weakOneThreads + weakTwoThreads) * getRam(ns, 'w') + growThreads * getRam(ns, 'g');
