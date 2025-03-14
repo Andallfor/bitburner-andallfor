@@ -3,6 +3,22 @@ import { batchThreads, distribute, weakenThreadsNeeded } from '/code/batch/util'
 import { BATCH_INTERVAL, BATCH_STEP, distributeResults } from '/code/batch/constants';
 import { attackType, getScript } from '/code/util/util';
 
+function help(ns: NS) {
+    const msg = `\n
+Repeatedly performs a batch (HWGW) against a target server. See also batch/stats.ts (batch-stats).
+Does not require Formulas.exe.
+
+Usage: batch target [-p] [-h] [-s]
+Flags:
+    Name        Type        Default         Description
+    target      string                      Name of target server.
+    -p          float       0.5             Percentage to hack, 0 to 1.
+    -h          bool        false           Allow home server to host HGW scripts (see also HOME_RESERVED).
+    -s          int         -1              Maximum number of concurrent batches. -1 indicates no limit.
+`;
+    ns.tprint(msg);
+}
+
 // does not require formulas but will only perform one saturated batch attack at a time
 // TODO: for simplicity we assume home does not have any cores
 export async function main(ns: NS) {
@@ -12,7 +28,13 @@ export async function main(ns: NS) {
         ['p', 0.5], // percent to hack
         ['h', false], // can use home server (will leave HOME_RESERVED untouched)
         ['s', -1], // max batch saturation
+        ['help', false],
     ]);
+
+    if (flags['help']) {
+        help(ns);
+        return;
+    }
 
     const target = (flags['_'] as string[])[0];
     if (!ns.serverExists(target)) {
@@ -24,8 +46,8 @@ export async function main(ns: NS) {
     const includeHome = flags['h'] as boolean;
     const saturation = flags['s'] as number;
 
-    ns.setTitle(`Batch - ${target} (p=${percent} s=${saturation})`);
-    ns.tail();
+    ns.ui.setTailTitle(`Batch - ${target} (p=${percent} s=${saturation})`);
+    ns.ui.openTail();
 
     await prep(ns, target, includeHome);
 

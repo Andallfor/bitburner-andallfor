@@ -1,6 +1,6 @@
 import { NS } from "@ns";
 import { allDeployableServers, allHackableServers, getRam, msToTime } from "../util/util";
-import { BATCH_INTERVAL, BATCH_STEP } from "./constants";
+import { BATCH_INTERVAL, BATCH_STEP, HOME_RESERVED } from "./constants";
 import { batchThreads, weakenThreadsNeeded } from "./util";
 
 type _bi = 'server' | 'prep' | 'cycleTime' | 'saturation' | 'totalRam' | 'profitPerSec' | 'profitPerRam';
@@ -25,20 +25,45 @@ const BATCH_HEADER: Record<_bi, string> = {
     profitPerRam: 'Profit/RAM'
 }
 
-export async function main(ns: NS) {
-    if (!ns.fileExists('Formulas.exe')) {
-        ns.tprintf("ERROR: Script requires formulas api");
-        ns.exit();
-    }
+function help(ns: NS) {
+    const msg = `\n
+Displays batch related information for all accessible servers. See also batch/main.ts (batch).
+By default sorts by profit per second and hides servers that require more RAM than is available.
+Requires Formulas.exe!
 
+Usage batch-info [-p] [-h] [-r] [-n] [-i] [-m]
+Flags:
+    Name        Type        Default         Description
+    -p          float       0.5             Percentage of each server's money to hack.
+    -n          int         10              Number of displayed entries.
+    -r          bool        false           Sort by profit per unit RAM.
+    -i          bool        false           Include servers that would require too much RAM.
+    -m          bool        false           Use servers' max RAM when calculating available space rather than current RAM.
+    -h          bool        false           Include home server in RAM calculations.
+`;
+    ns.tprint(msg);
+}
+
+export async function main(ns: NS) {
     const flags = ns.flags([
         ['p', 0.5],
-        ['v', false], // only show valid servers TODO:
         ['r', false], // sort by profit per ram (whereas default is per sec)
         ['n', 10], // number of entries to show
         ['i', false], // show invalid servers (not enough ram)
         ['m', false], // only use servers max ram when calculating if it is invalid or not
+        ['h', false], // include home server in ram calculations
+        ['help', false],
     ]);
+
+    if (flags['help']) {
+        help(ns);
+        return;
+    }
+
+    if (!ns.fileExists('Formulas.exe')) {
+        ns.tprintf("ERROR: Script requires formulas api");
+        ns.exit();
+    }
 
     const fh = ns.formulas.hacking;
     const p = ns.getPlayer();
@@ -46,9 +71,13 @@ export async function main(ns: NS) {
     const n = flags['n'] as number;
     const invalidAllowed = flags['i'] as boolean;
     const m = flags['m'] as boolean;
+    const h = flags['h'] as boolean;
 
-    const totalCost = allDeployableServers(ns, false).reduce((prev, acc) =>
-        prev + (m ? ns.getServerMaxRam(acc) : ns.getServerMaxRam(acc) - ns.getServerUsedRam(acc)), 0);
+    const totalCost = allDeployableServers(ns, h).reduce((prev, s) => {
+        const r = prev + (m ? ns.getServerMaxRam(s) : ns.getServerMaxRam(s) - ns.getServerUsedRam(s));
+        return r - (s == 'home' ? HOME_RESERVED : 0)
+    }, 0);
+        
 
     const _data: batchInfo[] = [];
 

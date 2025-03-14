@@ -1,13 +1,36 @@
 import { NS } from "@ns";
 
+function help(ns: NS) {
+    const msg = `\n
+Utility function for managing personal servers.
+
+Usage: server -l
+       server target [-s target] -b int
+       server [target] [-s target] -q int
+Flags:
+    Name        Type        Default         Description
+    -l          bool                        List all personal servers.
+    -s          string                      Set focused server. Can also be specified by setting target as the first argument.
+    -b          int                         Upgrades (if target/-s exists) or buys (if it does not exist) personal server to the target level.
+    -q          int                         Displays the required cost to upgrade/buy a personal server at the input level.
+`;
+    ns.tprint(msg);
+}
+
 export async function main(ns: NS) {
     const flags = ns.flags([
         ['l', false], // list all servers
         ['s', ''], // server to be used
         ['b', 0], // buy/upgrade (1 -> 20)
         ['q', 0], // print cost of doing buy action (1 -> 20)
+        ['help', false],
         // TODO: renaming servers
     ]);
+
+    if (flags['help']) {
+        help(ns);
+        return;
+    }
 
     const servers = ns.getPurchasedServers();
     if (flags['l']) {
