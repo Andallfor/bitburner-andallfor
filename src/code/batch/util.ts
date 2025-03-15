@@ -19,7 +19,7 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
 
     const output: distributeResults = {
         hack: [],
-        grow: ['', 0],
+        grow: [],
         weakOne: [],
         weakTwo: [],
         modifiedServers: {},
@@ -38,7 +38,7 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
             const needed = grow * getRam(ns, 'g');
     
             if (ava >= needed) {
-                output.grow = [s, grow];
+                output.grow.push([s, grow]);
                 output.modifiedServers[s] = ava - needed;
                 grow = 0;
     
@@ -46,7 +46,7 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
             }
         }
 
-        if (output.grow[0].length == 0) {
+        if (output.grow.length == 0) {
             ns.tprint(`ERROR: Cannot distribute ${grow} grow threads (max=${runnable(ns, servers[servers.length - 1], 'g')})`);
             return undefined;
         }

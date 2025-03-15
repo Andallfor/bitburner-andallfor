@@ -39,8 +39,9 @@ export async function main(ns: NS) {
     const servers = ns.getPurchasedServers();
 
     if (flags['l']) { // display all servers
-        ns.tprintf("Max RAM is " + ns.formatRam(ns.getPurchasedServerMaxRam()));
-        ns.tprintf(`Servers: (${servers.length}/${ns.getPurchasedServerLimit()}):`)
+        const totalRam = ns.formatRam(servers.reduce((acc, x) => acc + ns.getServerMaxRam(x), 0));
+        ns.tprintf("Max individual server RAM is " + ns.formatRam(ns.getPurchasedServerMaxRam()));
+        ns.tprintf(`Servers: (${servers.length}/${ns.getPurchasedServerLimit()}, ${totalRam}):`)
         ns.tprintf(servers.map(x => `${x} (${Math.log2(ns.getServerMaxRam(x))} -> ${ns.formatRam(ns.getServerMaxRam(x))})`).join('\n'));
 
         return;

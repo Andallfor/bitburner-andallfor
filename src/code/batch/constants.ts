@@ -4,7 +4,7 @@ export const BATCH_INTERVAL = BATCH_STEP * 4 + 20;
 
 export interface distributeResults {
     hack: [string, number][], // where number is number of threads
-    grow: [string, number],
+    grow: [string, number][],
     weakOne: [string, number][],
     weakTwo: [string, number][],
     // tracks what servers have been affected by hack/grow and their remaining ram
