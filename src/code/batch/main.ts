@@ -1,7 +1,7 @@
 import { NS } from '@ns';
 import { batchThreads, distribute, weakenThreadsNeeded } from '/code/batch/util';
 import { BATCH_INTERVAL, BATCH_STEP, distributeResults } from '/code/batch/constants';
-import { attackType, getScript } from '/code/util/util';
+import { allDeployableServers, attackType, getScript } from '/code/util/util';
 
 function help(ns: NS) {
     const msg = `\n
@@ -49,6 +49,8 @@ export async function main(ns: NS) {
     ns.ui.setTailTitle(`Batch - ${target} (p=${percent} s=${saturation})`);
     ns.ui.openTail();
 
+    // TODO: prep only works for servers that we can prep in one cycle
+    // while normally this is fine, this is bad on first start
     await prep(ns, target, includeHome);
 
     while (true) {
@@ -75,7 +77,7 @@ export async function main(ns: NS) {
 
         // wait remaining time
         if (saturation != -1) await ns.sleep((Math.floor(length / BATCH_INTERVAL) - sat) * BATCH_INTERVAL);
-        else await ns.sleep(runTime);
+        else await ns.sleep(BATCH_INTERVAL); // possible issue waiting for end of interval (maybe wait for middle?)
 
         ns.print(`Completed cycle r=${ns.tFormat(runTime)}`);
         await prep(ns, target, includeHome);
@@ -136,7 +138,12 @@ function deploy(ns: NS, res: distributeResults, target: string): [number, number
         data.forEach(([server, threads]) => {
             if (threads <= 0) return; // threads might be 0 or -1
             ns.scp(script, server);
+            // TODO: add in case to catch when we arent able to execute script (pid = 0)
             pid = ns.exec(script, server, threads, target, offset);
+            if (pid == 0) {
+                ns.print(server);
+                ns.print(`ERROR: cur ${ns.getServerMaxRam(server) - ns.getServerUsedRam(server)} req ${threads * ns.getScriptRam(script)}`);
+            }
         });
 
         return pid;

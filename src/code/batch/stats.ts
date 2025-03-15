@@ -3,7 +3,7 @@ import { allDeployableServers, allHackableServers, getRam, msToTime } from "../u
 import { BATCH_INTERVAL, BATCH_STEP, HOME_RESERVED } from "./constants";
 import { batchThreads, weakenThreadsNeeded } from "./util";
 
-type _bi = 'server' | 'prep' | 'cycleTime' | 'saturation' | 'totalRam' | 'profitPerSec' | 'profitPerRam';
+type _bi = 'server' | 'prep' | 'cycleTime' | 'saturation' | 'totalRam' | 'profitPerSec' | 'profitPerRam' | 'maxContiguousRam';
 
 interface batchInfo {
     server: string,
@@ -12,7 +12,8 @@ interface batchInfo {
     saturation: number,
     totalRam: number,
     profitPerSec: number,
-    profitPerRam: number
+    profitPerRam: number,
+    maxContiguousRam: number,
 }
 
 const BATCH_HEADER: Record<_bi, string> = {
@@ -21,6 +22,7 @@ const BATCH_HEADER: Record<_bi, string> = {
     cycleTime: 'Cycle Length',
     saturation: 'Saturation',
     totalRam: 'RAM Needed',
+    maxContiguousRam: 'Max Contiguous RAM',
     profitPerSec: 'Profit/Sec',
     profitPerRam: 'Profit/RAM'
 }
@@ -31,14 +33,14 @@ Displays batch related information for all accessible servers. See also batch/ma
 By default sorts by profit per second and hides servers that require more RAM than is available.
 Requires Formulas.exe!
 
-Usage batch-info [-p] [-h] [-r] [-n] [-i] [-m]
+Usage batch-info [-p] [-h] [-r] [-n] [-i] [-s]
 Flags:
     Name        Type        Default         Description
     -p          float       0.5             Percentage of each server's money to hack.
     -n          int         10              Number of displayed entries.
+    -s          int         -1              Max allowed saturation amount. -1 indicates unlimited.
     -r          bool        false           Sort by profit per unit RAM.
     -i          bool        false           Include servers that would require too much RAM.
-    -m          bool        false           Use servers' max RAM when calculating available space rather than current RAM.
     -h          bool        false           Include home server in RAM calculations.
 `;
     ns.tprint(msg);
@@ -49,8 +51,8 @@ export async function main(ns: NS) {
         ['p', 0.5],
         ['r', false], // sort by profit per ram (whereas default is per sec)
         ['n', 10], // number of entries to show
+        ['s', -1], // saturation
         ['i', false], // show invalid servers (not enough ram)
-        ['m', false], // only use servers max ram when calculating if it is invalid or not
         ['h', false], // include home server in ram calculations
         ['help', false],
     ]);
@@ -65,16 +67,18 @@ export async function main(ns: NS) {
         ns.exit();
     }
 
+    ns.tprintf('\n');
+
     const fh = ns.formulas.hacking;
     const p = ns.getPlayer();
     const percent = flags['p'] as number;
-    const n = flags['n'] as number;
+    const numEntries = flags['n'] as number;
     const invalidAllowed = flags['i'] as boolean;
-    const m = flags['m'] as boolean;
-    const h = flags['h'] as boolean;
+    const useHome = flags['h'] as boolean;
+    const allowedSaturation = flags['s'] as number;
 
-    const totalCost = allDeployableServers(ns, h).reduce((prev, s) => {
-        const r = prev + (m ? ns.getServerMaxRam(s) : ns.getServerMaxRam(s) - ns.getServerUsedRam(s));
+    const totalCost = allDeployableServers(ns, useHome).reduce((prev, s) => {
+        const r = prev + ns.getServerMaxRam(s);
         return r - (s == 'home' ? HOME_RESERVED : 0)
     }, 0);
         
@@ -92,7 +96,8 @@ export async function main(ns: NS) {
         server.moneyAvailable = server.moneyMax!;
 
         const batchLength = fh.weakenTime(server, p); // same as batch/main.ts
-        const saturation = Math.floor(batchLength / BATCH_INTERVAL);
+        const maxSaturation = Math.floor(batchLength / BATCH_INTERVAL);
+        const saturation = allowedSaturation != -1 ? Math.min(maxSaturation, allowedSaturation) : maxSaturation;
     
         const profit = server.moneyAvailable * percent;
         const hackThreads = percent / fh.hackPercent(server, p);
@@ -101,9 +106,14 @@ export async function main(ns: NS) {
         const growThreads = Math.ceil(fh.growThreads(server, p, server.moneyMax!) * 1.1);
         const weakTwoThreads = weakenThreadsNeeded(ns, ns.growthAnalyzeSecurity(growThreads));
 
-        const ram = hackThreads * getRam(ns, 'h') + (weakOneThreads + weakTwoThreads) * getRam(ns, 'w') + growThreads * getRam(ns, 'g');
+        const htr = hackThreads * getRam(ns, 'h');
+        const gtr = growThreads * getRam(ns, 'g');
+        const w1tr = weakOneThreads * getRam(ns, 'w');
+        const w2tr = weakTwoThreads * getRam(ns, 'w');
+        const ram = htr + gtr + w1tr + w2tr;
+        const maxConRam = Math.max(htr, gtr, w1tr, w2tr);
 
-        const profitPerSec = profit / BATCH_INTERVAL * 1000 * fh.hackChance(server, p); // interval is ms
+        const profitPerSec = fh.hackChance(server, p) * (saturation / maxSaturation) * (profit / BATCH_INTERVAL) * 1000; // interval is ms
         const profitPerRam = profit / ram;
 
         const ramPerCycle = saturation * ram;
@@ -118,6 +128,7 @@ export async function main(ns: NS) {
             totalRam: ramPerCycle,
             profitPerRam: profitPerRam,
             profitPerSec: profitPerSec,
+            maxContiguousRam: maxConRam
         });
     });
 
@@ -157,11 +168,25 @@ export async function main(ns: NS) {
 
         i++;
 
-        if (i == n) break;
+        if (i == numEntries) break;
     }
 
     ns.tprintf(formatted);
-    ns.tprintf("Available RAM: " + ns.formatRam(totalCost));
+    ns.tprintf("\nMax available RAM: " + ns.formatRam(totalCost));
+
+    const serverRams: Record<number, number> = {};
+    allDeployableServers(ns, useHome).forEach(x => {
+        let ram = ns.getServerMaxRam(x);
+        if (x == 'home') ram -= HOME_RESERVED;
+
+        if (ram in serverRams) serverRams[ram]++;
+        else serverRams[ram] = 1;
+    });
+
+    ns.tprintf('Current server availabilities:');
+    Object.entries(serverRams)
+        .sort((a, b) => Number(a[0]) - Number(b[0]))
+        .forEach((entry) => ns.tprintf(`${ns.formatRam(Number(entry[0]))}: ${entry[1]}`));
 }
 
 function format(ns: NS, data: batchInfo): Record<_bi, string> {
@@ -174,6 +199,7 @@ function format(ns: NS, data: batchInfo): Record<_bi, string> {
         totalRam: ns.formatRam(data.totalRam),
         profitPerSec: ns.formatNumber(data.profitPerSec),
         profitPerRam: ns.formatNumber(data.profitPerRam),
+        maxContiguousRam: ns.formatRam(data.maxContiguousRam),
     };
 }
 

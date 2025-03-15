@@ -37,6 +37,8 @@ export async function main(ns: NS) {
         await weaken(ns, target, nWeak, weak);
     }
 
+    return;
+
     // TODO: implement actual proper hack
     while (true) {
         const moneyStart = ns.getServerMoneyAvailable(target);
@@ -126,7 +128,7 @@ function runnable(ns: NS, server: string, file: string) {
 }
 
 function deployAll(ns: NS, script: string, target: string, quota = -1) {
-    allDeployableServers(ns)
+    allDeployableServers(ns, true)
         .sort((a, b) => runnable(ns, b, script) - runnable(ns, a, script)) // prioritize larger servers so we have less instances
         .forEach((server: string) => {
             if (quota == 0) return;

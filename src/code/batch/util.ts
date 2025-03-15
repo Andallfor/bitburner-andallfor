@@ -15,7 +15,6 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
     servers.sort((a, b) => 
         (ns.getServerMaxRam(a) - ns.getServerUsedRam(a)) -
         (ns.getServerMaxRam(b) - ns.getServerUsedRam(b))
-        
     );
 
     const output: distributeResults = {
@@ -48,7 +47,7 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
         }
 
         if (output.grow[0].length == 0) {
-            ns.tprint(`ERROR: Cannot distribute ${grow} grow threads (max=${runnable(ns, servers[0], 'g')})`);
+            ns.tprint(`ERROR: Cannot distribute ${grow} grow threads (max=${runnable(ns, servers[servers.length - 1], 'g')})`);
             return undefined;
         }
     }
@@ -130,8 +129,7 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
 
 function getUsableRam(ns: NS, server: string, modifiedServers: Record<string, number>) {
     if (server in modifiedServers) return modifiedServers[server];
-    
-    const max = ns.getServerMaxRam(server) * (server == 'home' ? HOME_RESERVED : 1);
+    const max = ns.getServerMaxRam(server) - (server == 'home' ? HOME_RESERVED : 0);
     const cur = ns.getServerUsedRam(server);
 
     return max - cur;
@@ -140,7 +138,7 @@ function getUsableRam(ns: NS, server: string, modifiedServers: Record<string, nu
 export function runnable(ns: NS, server: string, attack: attackType) {
     const cur = ns.getServerUsedRam(server);
     let max = ns.getServerMaxRam(server);
-    if (server == 'home') max *= HOME_RESERVED;
+    if (server == 'home') max -= HOME_RESERVED;
 
     return Math.floor((max - cur) / getRam(ns, attack));
 }
@@ -151,7 +149,7 @@ export function weakenThreadsNeeded(ns: NS, amt: number, thres = 0.05) { // 0.05
     let floor = 1;
 
     if (ns.weakenAnalyze(ceil) < amt) {
-        ns.tprint(`ERROR: Attempting to calculate threads needed for a weaken by ${amt} (req threads > 10k)`);
+        ns.tprint(`ERROR: Attempting to calculate threads needed for a weaken by ${amt} (req threads > 100k)`);
         ns.exit();
     }
 
