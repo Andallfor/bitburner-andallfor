@@ -10,8 +10,9 @@ export async function main(ns: NS) {
 Last updated: 3/14/25
 
 === TODO ===
-Don't have batching wait between cycles.
-Improve/clean up singleAttack.
+Have batch account for increasing player levels
+Improve/clean up singleAttack - maybe just remove?
+Better server/batch monitor.
 
 === Meta Information ===
 - Connect VSCode via 'npm run watch'

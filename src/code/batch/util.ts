@@ -2,6 +2,12 @@ import { HackingFormulas, NS, Server } from "@ns";
 import { allDeployableServers, attackType, getRam, getScript } from "code/util/util";
 import { HOME_RESERVED, distributeResults } from "/code/batch/constants";
 
+export const CHILDREN = {
+    hack: '/code/batch/deployable/hack.js',
+    grow: '/code/batch/deployable/grow.js',
+    weak: '/code/batch/deployable/weak.js',
+}
+
 /** Find the best servers to run each action on */
 export function distribute(ns: NS, hack: number, weakOne: number, grow: number, weakTwo: number, includeHome: boolean): distributeResults | undefined {
     const servers = allDeployableServers(ns, includeHome);

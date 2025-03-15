@@ -73,8 +73,11 @@ export async function main(ns: NS) {
             await ns.sleep(BATCH_INTERVAL);
         }
 
+        // wait remaining time
+        if (saturation != -1) await ns.sleep((Math.floor(length / BATCH_INTERVAL) - sat) * BATCH_INTERVAL);
+        else await ns.sleep(runTime);
+
         ns.print(`Completed cycle r=${ns.tFormat(runTime)}`);
-        await ns.sleep(runTime);
         await prep(ns, target, includeHome);
     }
 }
@@ -85,8 +88,13 @@ export async function prep(ns: NS, target: string, includeHome: boolean) {
     const maxMon = ns.getServerMaxMoney(target);
     const curMon = ns.getServerMoneyAvailable(target);
 
-    if (minSec == curSec && maxMon == curMon) {
+    if (curSec == minSec && maxMon == curMon) {
         ns.print("Server is already prepared, skipping");
+        return;
+    }
+
+    if (curSec - minSec < 0.05 && maxMon - curMon <= 0.05 * maxMon) {
+        ns.printf("WARN: Server was close enough to prepped, skipping");
         return;
     }
 
@@ -112,7 +120,7 @@ export async function prep(ns: NS, target: string, includeHome: boolean) {
     await ns.sleep(n + 100);
 
     if (ns.getServerMaxMoney(target) == ns.getServerMoneyAvailable(target) &&
-        ns.getServerMinSecurityLevel(target) ==ns.getServerSecurityLevel(target))
+        ns.getServerMinSecurityLevel(target) == ns.getServerSecurityLevel(target))
         ns.print("Successfully prepared server");
     else {
         ns.tprint("ERROR: Unable to prepare server");

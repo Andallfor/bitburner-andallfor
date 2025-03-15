@@ -1,20 +1,42 @@
 import { NS } from "@ns";
 import { allServers, allServersString } from "../util/util";
 
-export async function main(ns: NS) {
-    const solutions: Record<string, (ns: NS, file: string, server: string) => string> = {
-        'Array Jumping Game': arrayJumpingGameI,
-        'Square Root': squareRoot,
-        'Compression II: LZ Decompression': compressionII,
-        'Encryption II: Vigenère Cipher': vigenereCipher,
-        'Array Jumping Game II': arrayJumpingGameII,
-    };
+const solutions: Record<string, (ns: NS, file: string, server: string) => string> = {
+    'Array Jumping Game': arrayJumpingGameI,
+    'Square Root': squareRoot,
+    'Compression II: LZ Decompression': compressionII,
+    'Encryption II: Vigenère Cipher': vigenereCipher,
+    'Array Jumping Game II': arrayJumpingGameII,
+    'Spiralize Matrix': spiralizeMatrix,
+    'Generate IP Addresses': generateIpAddress,
+};
 
+function help(ns: NS) {
+    const msg = `\n
+Automatically finds and completes contracts.
+Currently provides solutions for:
+${Object.keys(solutions).map(x => `- ${x}\n`).join('')}
+Usage: cct [-u] [-c]
+Flags:
+    Name        Type        Default         Description
+    -u          string      ''              If defined, script will only test the provided contract name (assuming that it has a solution defined). If defined as value 'all', script will test all defined contracts.
+    -c          bool        false           Clears all contracts on home.
+`;
+    ns.tprint(msg);
+}
+
+export async function main(ns: NS) {
     const cct = ns.codingcontract;
     const flags = ns.flags([
         ['u', ''], // unit test
         ['c', false], // clear all contracts on home
+        ['help', false],
     ]);
+
+    if (flags['help']) {
+        help(ns);
+        return;
+    }
     
     const u = flags['u'] as string;
 
@@ -163,4 +185,104 @@ function vigenereCipher(ns: NS, server: string, file: string): string {
     }
 
     return out;
+}
+
+function spiralizeMatrix(ns: NS, server: string, file: string): string {
+    const cct = ns.codingcontract;
+    const mtx = cct.getData(file, server) as number[][];
+
+    const dirs = [[1, 0], [0, -1], [-1, 0], [0, 1]]; // x, y
+    const visited: number[] = [];
+
+    const out: number[] = [];
+
+    function inBounds(x: number, y: number) { return x >= 0 && y >= 0 && x < mtx[0].length && y < mtx.length; }
+    function hash(x: number, y: number) { return x * mtx.length + y; }
+    function move(x: number, y: number, dirInd: number) { return [x + dirs[dirInd][0], y + dirs[dirInd][1]]; }
+
+    let x = 0;
+    let y = 0;
+    let dirInd = 0;
+    while (true) {
+        out.push(mtx[y][x]);
+        visited.push(hash(x, y));
+
+        let [nx, ny] = move(x, y, dirInd);
+
+        // check if we can move
+        if (visited.includes(hash(nx, ny)) || !inBounds(nx, ny)) {
+            let blocked = true;
+            // get open direction
+            for (let i = 0; i < dirs.length; i++) {
+                let [fx, fy] = move(x, y, i);
+                if (!visited.includes(hash(fx, fy)) && inBounds(fx, fy)) {
+                    blocked = false;
+                    dirInd = i;
+
+                    x = fx;
+                    y = fy;
+
+                    break;
+                }
+            }
+
+            // we are blocked, which means weve fully spiraled so quit
+            if (blocked) break;
+        } else {
+            x = nx;
+            y = ny;
+        }
+    }
+
+    return out.join(', ');
+}
+
+function generateIpAddress(ns: NS, server: string, file: string): string {
+    const cct = ns.codingcontract;
+    const str = cct.getData(file, server) as string;
+
+    // each octet can only be of length 1-3
+    // since each IP address must have 4 components,
+    // there are a total of 81 unique block length combinations (3^4)
+    // this is a small enough set that we can just check every single one
+
+    // the component lengths
+    const inds = [1, 1, 1, 1];
+
+    const out: string[] = [];
+    while (true) {
+        // get the next component lengths we should look at
+        // [1, 1, 1, 3]++ -> [1, 1, 2, 1] (we increment each block until we reach the end)
+        let atEnd = false;
+        inds[inds.length - 1]++;
+        for (let i = inds.length - 1; i >= 0; i--) {
+            if (inds[i] == 4) {
+                inds[i] = 1;
+                if (i - 1 >= 0) inds[i - 1]++;
+                else atEnd = true;
+            }
+        }
+
+        if (atEnd) break;
+        const sum = inds[0] + inds[1] + inds[2] + inds[3];
+        if (sum != str.length) continue;
+
+        // now check if the generate blocks are valid
+        let isValid = true;
+        let j = 0;
+        let fmt: number[] = [];
+        for (let i = 0; i < 4 && isValid; i++) {
+            const s = str.substring(j, j + inds[i]);
+            const n = Number(s);
+            if (s.charAt(0) == '0' && n != 0) isValid = false;
+            if (n > 255) isValid = false;
+
+            j += inds[i];
+            fmt.push(n);
+        }
+
+        if (isValid) out.push(fmt.join('.'));
+    }
+
+    return out.join(', ');
 }

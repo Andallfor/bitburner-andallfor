@@ -1,5 +1,5 @@
 export const HOME_RESERVED = 64;
-export const BATCH_STEP = 50; // time between h/g/w
+export const BATCH_STEP = 75; // time between h/g/w
 export const BATCH_INTERVAL = BATCH_STEP * 4;
 
 export interface distributeResults {
