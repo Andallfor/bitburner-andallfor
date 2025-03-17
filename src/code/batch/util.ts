@@ -22,7 +22,8 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
         weakTwo = Math.max(weakTwo, 0);
     }
 
-    const servers = allDeployableServers(ns, includeHome);
+    // filter out all servers that are already full (min cost fora hack/grow/weak script is 1.7 gb)
+    const servers = allDeployableServers(ns, includeHome).filter(x => getUsableRam(ns, x, startServerState) > 1.7);
     // lowest ram first
     servers.sort((a, b) => getUsableRam(ns, a, startServerState) - getUsableRam(ns, b, startServerState));
 
@@ -41,10 +42,11 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
 
     // allocate grow - fill up the smallest server
     if (grow != 0) {
+        const needed = grow * getRam(ns, 'g');
+
         for (let i = 0; i < servers.length; i++) {
             const s = servers[i];
             let ava = getUsableRam(ns, s, output.modifiedServers);
-            const needed = grow * getRam(ns, 'g');
     
             if (ava >= needed) {
                 output.grow.push([s, grow]);
@@ -67,10 +69,9 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
         // first check for the smallest server that can hold hack
         for (let i = 0; i < servers.length; i++) {
             const s = servers[i];
-            let ava = getUsableRam(ns, s, output.modifiedServers);
-            let t = Math.floor(ava / getRam(ns, 'h'));
+            const ava = getUsableRam(ns, s, output.modifiedServers);
 
-            if (t >= hack) {
+            if (Math.floor(ava / getRam(ns, 'h')) >= hack) {
                 output.hack.push([s, hack]);
                 output.modifiedServers[s] = ava - hack * getRam(ns, 'h');
                 hack = 0;
@@ -83,26 +84,28 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
         if (hack != 0) {
             for (let i = 0; i < servers.length; i++) {
                 const s = servers[i];
-                let ava = getUsableRam(ns, s, output.modifiedServers);
-                let t = Math.floor(ava / getRam(ns, 'h'));
+                const ava = getUsableRam(ns, s, output.modifiedServers);
 
-                const n = Math.min(t, hack);
+                const n = Math.min(Math.floor(ava / getRam(ns, 'h')), hack);
                 if (n != 0) {
-                    t -= n;
                     hack -= n;
                     output.hack.push([s, n]);
-
                     output.modifiedServers[s] = ava - n * getRam(ns, 'h');
                 }
+
+                if (hack == 0) break;
             }
 
+            // TODO: it seems like we dont check if hack is fully allocated?
             if (err) ns.tprint(`WARNING: Hacking will occur over ${output.hack.length} attacks`);
             hackOverMultiple = true;
         }
     }
 
     // now distribute weaks
-    servers.forEach(s => {
+    for (let i = 0; i < servers.length; i++) {
+        const s = servers[i];
+
         let ava = getUsableRam(ns, s, output.modifiedServers);
 
         // TODO: remove code duplication
@@ -130,7 +133,8 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
         }
 
         output.modifiedServers[s] = ava;
-    });
+        if (weakOne == 0 && weakTwo == 0) break;
+    }
 
     if (weakOne != 0 || weakTwo != 0) {
         if (err) ns.tprint(`ERROR: Unable to fully allocate weak threads! (Overflow: 1=${weakOne} 2=${weakTwo})`);

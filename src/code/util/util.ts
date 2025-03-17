@@ -1,4 +1,5 @@
 import { NS, Server } from "@ns";
+import { strLenWithoutColors } from "./colors";
 
 /** Get all servers on map (as Server object) */
 export function allServers(ns: NS): Server[] {
@@ -85,4 +86,10 @@ export function run(ns: NS, data: [string, number][], file: string, args: string
   });
 
   return [n, pids];
+}
+
+export function pad(str: string, length: number) {
+  const baseLen = strLenWithoutColors(str);
+  for (let i = 1; i < length - baseLen; i++) str += ' ';
+  return str;
 }

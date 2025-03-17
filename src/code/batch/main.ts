@@ -98,9 +98,9 @@ async function prep(ns: NS, target: string, includeHome: boolean) {
     const weakTwo = weakenThreadsNeeded(ns, ns.growthAnalyzeSecurity(grow, target));
 
     const [ret, initialDist] = distribute(ns, 0, weakOne, grow, weakTwo, includeHome, false);
-    if (ret != -1) {
+    if (ret != -1 && weakOne != 0 && weakTwo != 0 && grow != 0) {
         const [t, _] = deploy(ns, initialDist, target);
-        ns.tprintf(`INFO: Prepping server in one cycle (${msToTime(t)})`);
+        ns.print(`INFO: Prepping server in one cycle (${msToTime(t)})`);
         await ns.sleep(t + 100);
     } else {
         // wg cycle, letting grow run across multiple servers

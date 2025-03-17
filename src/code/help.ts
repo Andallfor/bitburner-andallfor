@@ -29,9 +29,10 @@ Commands (/cmds)
 - server.ts         server          Utility for controlling personal servers.
 - share.ts          share           Faction experience share.
 - stats.ts          stats           Various server statistics.
+- ram.ts            ram             RAM monitor.
 
 Batching (/batch)
-- stats.ts          batch-stats      Relevant batch info for each server. Requires Formulas.exe.
+- stats.ts          batch-stats     Relevant batch info for each server. Requires Formulas.exe.
 - main.ts           batch           Execute a batch command.  
 
 Simple Attacks (/singleAttack)

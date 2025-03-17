@@ -1,5 +1,5 @@
 import { NS } from "@ns";
-import { allDeployableServers, allHackableServers, getRam, msToTime } from "../util/util";
+import { allDeployableServers, allHackableServers, getRam, msToTime, pad } from "../util/util";
 import { BATCH_INTERVAL, BATCH_STEP, HOME_RESERVED } from "./constants";
 import { batchThreads, distribute, weakenThreadsNeeded } from "./util";
 import { colorValid, strLenWithoutColors, toCyan, toWhite, toGreen, toRed, toPink } from "../util/colors";
@@ -74,8 +74,6 @@ export async function main(ns: NS) {
         ns.exit();
     }
 
-    ns.tprintf('\n');
-
     const fh = ns.formulas.hacking;
     const p = ns.getPlayer();
     const percent = flags['p'] as number;
@@ -90,7 +88,7 @@ export async function main(ns: NS) {
     }, 0);
         
 
-    const _data: batchInfo[] = [];
+    let _data: batchInfo[] = [];
 
     allHackableServers(ns).forEach((s) => {
         const server = ns.getServer(s);
@@ -121,29 +119,6 @@ export async function main(ns: NS) {
 
         const ramPerCycle = saturation * ram;
 
-        // simulate batch to see if we can run or not
-        // this is very expensive!
-        let state = -2;
-        if (ramPerCycle > totalCost) state = -1;
-        else if (ramPerCycle * 1.5 < totalCost) state = 2; // we probably can run
-        else if (!disableBatchSim) {
-            state = 0;
-
-            let serverState: Record<string, number> = {};
-            if (flags['m']) allDeployableServers(ns, useHome).forEach(x => serverState[x] = ns.getServerMaxRam(x) - (x == 'home' ? HOME_RESERVED : 0));
-
-            // TODO: for some reason, saturation is not being calculated correctly (under estimate) and so this doesn't correctly simulate
-            for (let i = 0; i < saturation; i++) {
-                const [ret, dist] = distribute(ns, hackThreads, weakOneThreads, growThreads, weakTwoThreads, useHome, false, serverState);
-
-                serverState = dist.modifiedServers;
-                if (ret == -1) {
-                    state = -1;
-                    break;
-                } else if (ret == 1) state = 1;
-            }
-        }
-
         _data.push({
             server: s,
             prep: prepTime,
@@ -153,11 +128,46 @@ export async function main(ns: NS) {
             profitPerRam: profitPerRam,
             profitPerSec: profitPerSec,
             maxContiguousRam: maxConRam,
-            valid: state,
+            valid: -2,
         });
     });
 
-    _data.sort((a, b) => flags['r'] as boolean ? b.profitPerRam - a.profitPerRam : b.profitPerSec - a.profitPerSec);
+    _data = _data.sort((a, b) => flags['r'] as boolean ? b.profitPerRam - a.profitPerRam : b.profitPerSec - a.profitPerSec).slice(0, numEntries);
+
+    const totalSimulations = disableBatchSim ? 0 : _data.reduce((acc, x) => x.totalRam <= totalCost && x.totalRam * 1.25 >= totalCost ? acc + x.saturation : acc, 0);
+    if (!disableBatchSim) ns.tprintf(`Please wait, currently simulating batch cycles... (n=${totalSimulations})`);
+    for (let i = 0; i < _data.length; i++) {
+        const x = _data[i];
+        // simulate batch to see if we can run or not
+        // TODO: this is very expensive!
+        let state = -2;
+        if (x.totalRam > totalCost) state = -1;
+        else if (x.totalRam * 1.25 < totalCost) state = 2; // we probably can run
+        else if (!disableBatchSim) {
+            const [hackThreads, weakOneThreads, growThreads, weakTwoThreads] = batchThreads(ns, x.server, percent);
+
+            state = 0;
+
+            let serverState: Record<string, number> = {};
+            if (flags['m']) allDeployableServers(ns, useHome).forEach(x => serverState[x] = ns.getServerMaxRam(x) - (x == 'home' ? HOME_RESERVED : 0));
+
+            // TODO: for some reason, saturation is not being calculated correctly (under estimate) and so this doesn't correctly simulate
+            for (let i = 0; i < x.saturation; i++) {
+                const [ret, dist] = distribute(ns, hackThreads, weakOneThreads, growThreads, weakTwoThreads, useHome, false, serverState);
+
+                serverState = dist.modifiedServers;
+                if (ret == -1) {
+                    state = -1;
+                    break;
+                } else if (ret == 1) state = 1;
+
+                if (i % 1000 == 0) await ns.sleep(1);
+            }
+        }
+
+        _data[i].valid = state;
+    }
+
     const data: Record<_bi, string>[] = _data.map(x => format(ns, x));
 
     // is there a better way to do this?
@@ -178,7 +188,7 @@ export async function main(ns: NS) {
 
             let j = 0;
             for (const key of Object.keys(info)) {
-                header += pad(BATCH_HEADER[key as _bi], widthKey[key]);
+                header += ' ' + pad(BATCH_HEADER[key as _bi], widthKey[key]) + '│';
                 barrier += '─'.repeat(widthKey[key]) + (j == Object.keys(info).length - 1 ? '┤' : '┼');
 
                 j++;
@@ -188,16 +198,14 @@ export async function main(ns: NS) {
         }
 
         let line = '│';
-        for (const [key, value] of Object.entries(info)) line += pad(value, widthKey[key]);
+        for (const [key, value] of Object.entries(info)) line += ' ' + pad(value, widthKey[key]) + '│';
         formatted += line + '\n';
 
         i++;
-
-        if (i == numEntries) break;
     }
 
     ns.tprintf(formatted);
-    ns.tprintf("\nMax available RAM: " + ns.formatRam(totalCost));
+    ns.tprintf("Max available RAM: " + ns.formatRam(totalCost));
     /*
     const serverRams: Record<number, number> = {};
     allDeployableServers(ns, useHome).forEach(x => {
@@ -233,10 +241,4 @@ function format(ns: NS, data: batchInfo): Record<_bi, string> {
         profitPerRam: ns.formatNumber(data.profitPerRam),
         maxContiguousRam: ns.formatRam(data.maxContiguousRam),
     };
-}
-
-function pad(str: string, length: number) {
-    const baseLen = strLenWithoutColors(str);
-    for (let i = 1; i < length - baseLen; i++) str += ' ';
-    return ' ' + str + '│';
 }
