@@ -2,7 +2,7 @@ import { NS } from "@ns";
 import { allDeployableServers, allHackableServers, getRam, msToTime } from "../util/util";
 import { BATCH_INTERVAL, BATCH_STEP, HOME_RESERVED } from "./constants";
 import { batchThreads, distribute, weakenThreadsNeeded } from "./util";
-import { colorValid, strLenWithoutColors, toCyan, toGreen, toRed, toYellow } from "../util/colors";
+import { colorValid, strLenWithoutColors, toCyan, toWhite, toGreen, toRed, toPink } from "../util/colors";
 
 type _bi = 'server' | 'prep' | 'cycleTime' | 'saturation' | 'totalRam' | 'profitPerSec' | 'profitPerRam' | 'maxContiguousRam';
 
@@ -31,21 +31,21 @@ const BATCH_HEADER: Record<_bi, string> = {
 
 function help(ns: NS) {
     const msg = `\n
-Displays batch related information for all accessible servers. See also batch/main.ts (batch).
-By default sorts by profit per second and hides servers that require more RAM than is available.
+Displays batch related information for all accessible servers. See also batch/main.ts (batch). By default sorts by profit per second.
 Requires Formulas.exe!
 
-Usage batch-info [-p] [-h] [-r] [-n] [-i] [-s]
+Usage batch-stats [-p] [-h] [-r] [-n] [-v] [-s]
 Flags:
     Name        Type        Default         Description
     -p          float       0.5             Percentage of each server's money to hack.
     -n          int         25              Number of displayed entries.
     -s          int         -1              Max allowed saturation amount. -1 indicates unlimited.
     -r          bool        false           Sort by profit per unit RAM.
-    -i          bool        false           Include servers that would require too much RAM.
+    -v          bool        false           Disable batch simulation to determine whether or not a batch can run.
     -h          bool        false           Include home server in RAM calculations.
+    -m          bool        false           Batch simulation will only consider server max RAM.
 
-Notes: Server name will be 
+Notes: Server name indicates whether or not a batch is able to be run (${toRed('invalid')}, ${toPink('valid but hack occurs over multiple threads')}, ${toGreen('valid')}, ${toWhite('unknown')}).
 `;
     ns.tprint(msg);
 }
@@ -56,8 +56,9 @@ export async function main(ns: NS) {
         ['r', false], // sort by profit per ram (whereas default is per sec)
         ['n', 25], // number of entries to show
         ['s', -1], // saturation
-        ['i', false], // show invalid servers (not enough ram)
+        ['v', false], // should disable batch simulation
         ['h', false], // include home server in ram calculations
+        ['m', false],
         ['help', false],
     ]);
 
@@ -79,7 +80,7 @@ export async function main(ns: NS) {
     const p = ns.getPlayer();
     const percent = flags['p'] as number;
     const numEntries = flags['n'] as number;
-    const invalidAllowed = flags['i'] as boolean;
+    const disableBatchSim = flags['v'] as boolean;
     const useHome = flags['h'] as boolean;
     const allowedSaturation = flags['s'] as number;
 
@@ -101,7 +102,7 @@ export async function main(ns: NS) {
         server.hackDifficulty = server.minDifficulty!;
         server.moneyAvailable = server.moneyMax!;
 
-        const batchLength = fh.weakenTime(server, p); // same as batch/main.ts
+        const batchLength = fh.weakenTime(server, p) + BATCH_STEP * 2;
         const maxSaturation = Math.floor(batchLength / BATCH_INTERVAL);
         const saturation = allowedSaturation != -1 ? Math.min(maxSaturation, allowedSaturation) : maxSaturation;
 
@@ -122,11 +123,16 @@ export async function main(ns: NS) {
 
         // simulate batch to see if we can run or not
         // this is very expensive!
-        let state = 0;
+        let state = -2;
         if (ramPerCycle > totalCost) state = -1;
         else if (ramPerCycle * 1.5 < totalCost) state = 2; // we probably can run
-        else {
-            let serverState = {};
+        else if (!disableBatchSim) {
+            state = 0;
+
+            let serverState: Record<string, number> = {};
+            if (flags['m']) allDeployableServers(ns, useHome).forEach(x => serverState[x] = ns.getServerMaxRam(x) - (x == 'home' ? HOME_RESERVED : 0));
+
+            // TODO: for some reason, saturation is not being calculated correctly (under estimate) and so this doesn't correctly simulate
             for (let i = 0; i < saturation; i++) {
                 const [ret, dist] = distribute(ns, hackThreads, weakOneThreads, growThreads, weakTwoThreads, useHome, false, serverState);
 
@@ -137,8 +143,6 @@ export async function main(ns: NS) {
                 } else if (ret == 1) state = 1;
             }
         }
-
-        if (state == -1 && !invalidAllowed) return;
 
         _data.push({
             server: s,
@@ -194,7 +198,7 @@ export async function main(ns: NS) {
 
     ns.tprintf(formatted);
     ns.tprintf("\nMax available RAM: " + ns.formatRam(totalCost));
-
+    /*
     const serverRams: Record<number, number> = {};
     allDeployableServers(ns, useHome).forEach(x => {
         let ram = ns.getServerMaxRam(x);
@@ -208,12 +212,14 @@ export async function main(ns: NS) {
     Object.entries(serverRams)
         .sort((a, b) => Number(a[0]) - Number(b[0]))
         .forEach((entry) => ns.tprintf(`${ns.formatRam(Number(entry[0]))}: ${entry[1]}`));
+    */
 }
 
 function format(ns: NS, data: batchInfo): Record<_bi, string> {
     // note that the order of elements here determines the print order on screen
-    const s = data.valid == -1 ? toRed(data.server)
-            : data.valid == 1 ? toYellow(data.server)
+    const s = data.valid == -2 ? toWhite(data.server)
+            : data.valid == -1 ? toRed(data.server)
+            : data.valid == 1 ? toPink(data.server)
             : data.valid == 2 ? toCyan(data.server)
             : toGreen(data.server);
 

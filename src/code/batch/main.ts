@@ -63,7 +63,7 @@ export async function main(ns: NS) {
         for (let i = 0; i < sat; i++) {
             const [hack, weakOne, grow, weakTwo] = batchThreads(ns, target, percent);
             const [ret, dist] = distribute(ns, hack, weakOne, grow, weakTwo, includeHome);
-            if (ret != 0 && ret != 1) {
+            if (ret == -1) {
                 ns.tprint(`ERROR: Unable to run batch step (${i} batches are active)`);
                 ns.exit();
             }
@@ -89,48 +89,62 @@ export async function main(ns: NS) {
     }
 }
 
+// set server to min security and max money, allowing for it to happen over multiple cycles
 async function prep(ns: NS, target: string, includeHome: boolean) {
-    // wg cycle, letting grow run across multiple servers
-    // note that this isnt strictly optimal - we only run one cycle at a time
-    // additionally we assume that all weak can be fit onto servers
-    while (true) {
-        const w = weakenThreadsNeeded(ns, ns.getServerSecurityLevel(target) - ns.getServerMinSecurityLevel(target));
-        const [ret, dist] = distribute(ns, 0, w, 0, 0, includeHome);
+    // first check if we can do this in a batch call
+    const weakOne = weakenThreadsNeeded(ns, ns.getServerSecurityLevel(target) - ns.getServerMinSecurityLevel(target));
+    const grow = ns.getServerMaxMoney(target) == ns.getServerMoneyAvailable(target)
+        ? 0 : Math.ceil(ns.growthAnalyze(target, ns.getServerMaxMoney(target) / Math.max(ns.getServerMoneyAvailable(target), 1)));
+    const weakTwo = weakenThreadsNeeded(ns, ns.growthAnalyzeSecurity(grow, target));
 
-        if (ret != 0 && ret != 1) {
-            ns.tprintf('ERROR: Unable to distribute weaken threads for initial server preparation');
-            ns.exit();
-        }
-
-        // now go over servers to see how many grow threads we can run
-        let growNeeded = Math.ceil(ns.growthAnalyze(target, ns.getServerMaxMoney(target) / Math.max(ns.getServerMoneyAvailable(target), 1)));
-        const servers = allDeployableServers(ns, includeHome) // sort by largest ram first
-            .sort((a, b) => (ns.getServerMaxRam(b) - ns.getServerUsedRam(b)) - (ns.getServerMaxRam(a) - ns.getServerUsedRam(a)));
-        
-        const growStart = growNeeded;
-        ns.print(`INFO: Starting initial server preparation cycle. Requires ${w} weak threads and ${growStart} grow threads.`);
-        if (growNeeded == 0 && w == 0) break;
-
-        servers.forEach(x => {
-            if (growNeeded == 0) return;
-
-            let ava = ns.getServerMaxRam(x) - ns.getServerUsedRam(x);
-            // not necessarily optimal either, as we sort above by max ram not accounting for weak distribution
-            if (x in dist.modifiedServers) ava = dist.modifiedServers[x];
-            ava -= x == 'home' ? HOME_RESERVED : 0;
-
-            const threads = Math.min(Math.floor(ava / getRam(ns, 'g')), growNeeded);
-            if (threads > 0) {
-                dist.grow.push([x, threads]);
-                growNeeded -= threads;   
-            }
-        });
-
-        const [t, _] = deploy(ns, dist, target);
-
-        ns.print(`INFO: Distributed ${growStart - growNeeded} grow threads across ${dist.grow.length} servers. Next cycle in ${msToTime(t)}.`);
-
+    const [ret, initialDist] = distribute(ns, 0, weakOne, grow, weakTwo, includeHome, false);
+    if (ret != -1) {
+        const [t, _] = deploy(ns, initialDist, target);
+        ns.tprintf(`INFO: Prepping server in one cycle (${msToTime(t)})`);
         await ns.sleep(t + 100);
+    } else {
+        // wg cycle, letting grow run across multiple servers
+        // note that this isnt strictly optimal - we only run one cycle at a time
+        // additionally we assume that all weak can be fit onto servers
+        while (true) {
+            const w = weakenThreadsNeeded(ns, ns.getServerSecurityLevel(target) - ns.getServerMinSecurityLevel(target));
+            const [ret, dist] = distribute(ns, 0, w, 0, 0, includeHome);
+
+            if (ret != 0 && ret != 1) {
+                ns.tprintf('ERROR: Unable to distribute weaken threads for initial server preparation');
+                ns.exit();
+            }
+
+            // now go over servers to see how many grow threads we can run
+            let growNeeded = Math.ceil(ns.growthAnalyze(target, ns.getServerMaxMoney(target) / Math.max(ns.getServerMoneyAvailable(target), 1)));
+            const servers = allDeployableServers(ns, includeHome) // sort by largest ram first
+                .sort((a, b) => (ns.getServerMaxRam(b) - ns.getServerUsedRam(b)) - (ns.getServerMaxRam(a) - ns.getServerUsedRam(a)));
+            
+            const growStart = growNeeded;
+            ns.print(`INFO: Starting initial server preparation cycle. Requires ${w} weak threads and ${growStart} grow threads.`);
+            if (growNeeded == 0 && w == 0) break;
+
+            servers.forEach(x => {
+                if (growNeeded == 0) return;
+
+                let ava = ns.getServerMaxRam(x) - ns.getServerUsedRam(x);
+                // not necessarily optimal either, as we sort above by max ram not accounting for weak distribution
+                if (x in dist.modifiedServers) ava = dist.modifiedServers[x];
+                ava -= x == 'home' ? HOME_RESERVED : 0;
+
+                const threads = Math.min(Math.floor(ava / getRam(ns, 'g')), growNeeded);
+                if (threads > 0) {
+                    dist.grow.push([x, threads]);
+                    growNeeded -= threads;   
+                }
+            });
+
+            const [t, _] = deploy(ns, dist, target);
+
+            ns.print(`INFO: Distributed ${growStart - growNeeded} grow threads across ${dist.grow.length} servers. Next cycle in ${msToTime(t)}.`);
+
+            await ns.sleep(t + 100);
+        }
     }
 
     const s = ns.getServerSecurityLevel(target); const ss = ns.getServerMinSecurityLevel(target);
