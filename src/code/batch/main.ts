@@ -52,17 +52,18 @@ export async function main(ns: NS) {
     await prep(ns, target, includeHome);
 
     while (true) {
+        // TODO: implement formulas
         const length = ns.getWeakenTime(target); // under count (no BATCH_SIZE * 2) for safety
-        let sat = Math.floor(length / BATCH_INTERVAL);
-        if (saturation != -1) sat = Math.min(sat, saturation);
+        const baseSat = Math.floor(length / BATCH_INTERVAL);
+        const sat = saturation == -1 ? baseSat : Math.min(baseSat, saturation);
 
         ns.print(`Starting cycle with a saturation of ${sat}`);
 
         let runTime = 0;
         for (let i = 0; i < sat; i++) {
             const [hack, weakOne, grow, weakTwo] = batchThreads(ns, target, percent);
-            const dist = distribute(ns, hack, weakOne, grow, weakTwo, includeHome);
-            if (!dist) {
+            const [ret, dist] = distribute(ns, hack, weakOne, grow, weakTwo, includeHome);
+            if (ret != 0 && ret != 1) {
                 ns.tprint(`ERROR: Unable to run batch step (${i} batches are active)`);
                 ns.exit();
             }
@@ -70,15 +71,19 @@ export async function main(ns: NS) {
             const [t, _] = deploy(ns, dist, target);
             runTime = t;
 
-            await ns.sleep(BATCH_INTERVAL);
+            if (false) {
+                // TODO: figure out better way for desync detection
+                await ns.sleep(BATCH_STEP / 2);
+                await reset(ns, target, includeHome);
+                await ns.sleep(BATCH_INTERVAL - BATCH_STEP / 2);
+            } else await ns.sleep(BATCH_INTERVAL);
         }
 
         // wait remaining time
-        if (saturation != -1) await ns.sleep((Math.floor(length / BATCH_INTERVAL) - sat) * BATCH_INTERVAL);
+        if (saturation != -1) await ns.sleep((baseSat - sat) * BATCH_INTERVAL);
         // else await ns.sleep(BATCH_STEP / 2);
 
         ns.print(`Completed cycle r=${ns.tFormat(runTime)}`);
-        // await reset(ns, target, includeHome);
 
         // await ns.sleep(BATCH_STEP / 2);
     }
@@ -90,9 +95,9 @@ async function prep(ns: NS, target: string, includeHome: boolean) {
     // additionally we assume that all weak can be fit onto servers
     while (true) {
         const w = weakenThreadsNeeded(ns, ns.getServerSecurityLevel(target) - ns.getServerMinSecurityLevel(target));
-        const dist = distribute(ns, 0, w, 0, 0, includeHome);
+        const [ret, dist] = distribute(ns, 0, w, 0, 0, includeHome);
 
-        if (!dist) {
+        if (ret != 0 && ret != 1) {
             ns.tprintf('ERROR: Unable to distribute weaken threads for initial server preparation');
             ns.exit();
         }
@@ -161,8 +166,8 @@ export async function reset(ns: NS, target: string, includeHome: boolean) {
         weakTwo = weakenThreadsNeeded(ns, ns.growthAnalyzeSecurity(grow, target));
     }
 
-    const toDeploy = distribute(ns, 0, weakOne, grow, weakTwo, includeHome);
-    if (!toDeploy) {
+    const [ret, toDeploy] = distribute(ns, 0, weakOne, grow, weakTwo, includeHome);
+    if (ret != 0 && ret != 1) {
         ns.tprint("ERROR: Unable to prepare server!");
         ns.exit();
     }

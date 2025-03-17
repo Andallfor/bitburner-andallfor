@@ -8,8 +8,12 @@ export const CHILDREN = {
     weak: '/code/batch/deployable/weak.js',
 }
 
-/** Find the best servers to run each action on */
-export function distribute(ns: NS, hack: number, weakOne: number, grow: number, weakTwo: number, includeHome: boolean): distributeResults | undefined {
+/** Find the best servers to run each action on
+ * 1 -> hack over multiple
+ * 0 -> success
+ * -1 -> impossible
+ */
+export function distribute(ns: NS, hack: number, weakOne: number, grow: number, weakTwo: number, includeHome: boolean, err = true, startServerState: Record<string, number> = {}): [number, distributeResults] {
     if (hack < 0 || weakOne < 0 || grow < 0 || weakTwo < 0) {
         ns.tprint(`ERROR: Distribute was called with requested threads < 0 (h: ${hack}, g: ${grow}, w1: ${weakOne}, w2: ${weakTwo})`);
         hack = Math.max(hack, 0);
@@ -20,17 +24,14 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
 
     const servers = allDeployableServers(ns, includeHome);
     // lowest ram first
-    servers.sort((a, b) => 
-        (ns.getServerMaxRam(a) - ns.getServerUsedRam(a)) -
-        (ns.getServerMaxRam(b) - ns.getServerUsedRam(b))
-    );
+    servers.sort((a, b) => getUsableRam(ns, a, startServerState) - getUsableRam(ns, b, startServerState));
 
     const output: distributeResults = {
         hack: [],
         grow: [],
         weakOne: [],
         weakTwo: [],
-        modifiedServers: {},
+        modifiedServers: startServerState,
     };
 
     // note that we need all grows to occur from the same script
@@ -55,12 +56,13 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
         }
 
         if (output.grow.length == 0) {
-            ns.tprint(`ERROR: Cannot distribute ${grow} grow threads (max=${runnable(ns, servers[servers.length - 1], 'g')})`);
-            return undefined;
+            if (err) ns.tprint(`ERROR: Cannot distribute ${grow} grow threads (max=${runnable(ns, servers[servers.length - 1], 'g')})`);
+            return [-1, output];
         }
     }
 
     // distribute hack
+    let hackOverMultiple = false;
     if (hack != 0) {
         // first check for the smallest server that can hold hack
         for (let i = 0; i < servers.length; i++) {
@@ -94,7 +96,8 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
                 }
             }
 
-            ns.tprint(`WARNING: Hacking will occur over ${output.hack.length} attacks`);
+            if (err) ns.tprint(`WARNING: Hacking will occur over ${output.hack.length} attacks`);
+            hackOverMultiple = true;
         }
     }
 
@@ -130,11 +133,11 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
     });
 
     if (weakOne != 0 || weakTwo != 0) {
-        ns.tprint(`ERROR: Unable to fully allocate weak threads! (Overflow: 1=${weakOne} 2=${weakTwo})`);
-        return undefined;
+        if (err) ns.tprint(`ERROR: Unable to fully allocate weak threads! (Overflow: 1=${weakOne} 2=${weakTwo})`);
+        return [-1, output];
     }
 
-    return output;
+    return [hackOverMultiple ? 1 : 0, output];
 }
 
 function getUsableRam(ns: NS, server: string, modifiedServers: Record<string, number>) {

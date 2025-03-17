@@ -13,6 +13,7 @@ Last updated: 3/14/25
 Have batch account for increasing player levels
 Improve/clean up singleAttack - maybe just remove?
 Better server/batch monitor.
+Generalize table printer.
 
 === Meta Information ===
 - Connect VSCode via 'npm run watch'

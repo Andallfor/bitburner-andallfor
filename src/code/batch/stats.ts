@@ -1,7 +1,8 @@
 import { NS } from "@ns";
 import { allDeployableServers, allHackableServers, getRam, msToTime } from "../util/util";
 import { BATCH_INTERVAL, BATCH_STEP, HOME_RESERVED } from "./constants";
-import { batchThreads, weakenThreadsNeeded } from "./util";
+import { batchThreads, distribute, weakenThreadsNeeded } from "./util";
+import { colorValid, strLenWithoutColors, toCyan, toGreen, toRed, toYellow } from "../util/colors";
 
 type _bi = 'server' | 'prep' | 'cycleTime' | 'saturation' | 'totalRam' | 'profitPerSec' | 'profitPerRam' | 'maxContiguousRam';
 
@@ -14,6 +15,7 @@ interface batchInfo {
     profitPerSec: number,
     profitPerRam: number,
     maxContiguousRam: number,
+    valid: number,
 }
 
 const BATCH_HEADER: Record<_bi, string> = {
@@ -37,11 +39,13 @@ Usage batch-info [-p] [-h] [-r] [-n] [-i] [-s]
 Flags:
     Name        Type        Default         Description
     -p          float       0.5             Percentage of each server's money to hack.
-    -n          int         10              Number of displayed entries.
+    -n          int         25              Number of displayed entries.
     -s          int         -1              Max allowed saturation amount. -1 indicates unlimited.
     -r          bool        false           Sort by profit per unit RAM.
     -i          bool        false           Include servers that would require too much RAM.
     -h          bool        false           Include home server in RAM calculations.
+
+Notes: Server name will be 
 `;
     ns.tprint(msg);
 }
@@ -50,7 +54,7 @@ export async function main(ns: NS) {
     const flags = ns.flags([
         ['p', 0.5],
         ['r', false], // sort by profit per ram (whereas default is per sec)
-        ['n', 10], // number of entries to show
+        ['n', 25], // number of entries to show
         ['s', -1], // saturation
         ['i', false], // show invalid servers (not enough ram)
         ['h', false], // include home server in ram calculations
@@ -61,6 +65,8 @@ export async function main(ns: NS) {
         help(ns);
         return;
     }
+
+    ns.disableLog('ALL');
 
     if (!ns.fileExists('Formulas.exe')) {
         ns.tprintf("ERROR: Script requires formulas api");
@@ -98,13 +104,9 @@ export async function main(ns: NS) {
         const batchLength = fh.weakenTime(server, p); // same as batch/main.ts
         const maxSaturation = Math.floor(batchLength / BATCH_INTERVAL);
         const saturation = allowedSaturation != -1 ? Math.min(maxSaturation, allowedSaturation) : maxSaturation;
-    
+
         const profit = server.moneyAvailable * percent;
-        const hackThreads = percent / fh.hackPercent(server, p);
-        const weakOneThreads = weakenThreadsNeeded(ns, ns.hackAnalyzeSecurity(hackThreads));
-        server.moneyAvailable -= server.moneyAvailable * percent;
-        const growThreads = Math.ceil(fh.growThreads(server, p, server.moneyMax!) * 1.1);
-        const weakTwoThreads = weakenThreadsNeeded(ns, ns.growthAnalyzeSecurity(growThreads));
+        const [hackThreads, weakOneThreads, growThreads, weakTwoThreads] = batchThreads(ns, s, percent);
 
         const htr = hackThreads * getRam(ns, 'h');
         const gtr = growThreads * getRam(ns, 'g');
@@ -118,7 +120,25 @@ export async function main(ns: NS) {
 
         const ramPerCycle = saturation * ram;
 
-        if (!invalidAllowed && ramPerCycle > totalCost) return;
+        // simulate batch to see if we can run or not
+        // this is very expensive!
+        let state = 0;
+        if (ramPerCycle > totalCost) state = -1;
+        else if (ramPerCycle * 1.5 < totalCost) state = 2; // we probably can run
+        else {
+            let serverState = {};
+            for (let i = 0; i < saturation; i++) {
+                const [ret, dist] = distribute(ns, hackThreads, weakOneThreads, growThreads, weakTwoThreads, useHome, false, serverState);
+
+                serverState = dist.modifiedServers;
+                if (ret == -1) {
+                    state = -1;
+                    break;
+                } else if (ret == 1) state = 1;
+            }
+        }
+
+        if (state == -1 && !invalidAllowed) return;
 
         _data.push({
             server: s,
@@ -128,7 +148,8 @@ export async function main(ns: NS) {
             totalRam: ramPerCycle,
             profitPerRam: profitPerRam,
             profitPerSec: profitPerSec,
-            maxContiguousRam: maxConRam
+            maxContiguousRam: maxConRam,
+            valid: state,
         });
     });
 
@@ -139,7 +160,7 @@ export async function main(ns: NS) {
     const widthKey: Record<string, number> = {};
     for (const [key, header] of Object.entries(BATCH_HEADER)) {
         let length = header.length;
-        data.forEach((info) => length = Math.max(info[key as _bi].length, length));
+        data.forEach((info) => length = Math.max(strLenWithoutColors(info[key as _bi]), length));
 
         widthKey[key] = length + 2;
     }
@@ -191,8 +212,13 @@ export async function main(ns: NS) {
 
 function format(ns: NS, data: batchInfo): Record<_bi, string> {
     // note that the order of elements here determines the print order on screen
+    const s = data.valid == -1 ? toRed(data.server)
+            : data.valid == 1 ? toYellow(data.server)
+            : data.valid == 2 ? toCyan(data.server)
+            : toGreen(data.server);
+
     return {
-        server: data.server,
+        server: s,
         prep: msToTime(data.prep),
         cycleTime: msToTime(data.cycleTime),
         saturation: '' + data.saturation,
@@ -204,5 +230,7 @@ function format(ns: NS, data: batchInfo): Record<_bi, string> {
 }
 
 function pad(str: string, length: number) {
-    return (' ' + str).padEnd(length, ' ') + '│';
+    const baseLen = strLenWithoutColors(str);
+    for (let i = 1; i < length - baseLen; i++) str += ' ';
+    return ' ' + str + '│';
 }
