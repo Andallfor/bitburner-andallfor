@@ -6,7 +6,7 @@ import { allDeployableServers, attackType, getRam, getScript, msToTime } from '/
 function help(ns: NS) {
     const msg = `\n
 Repeatedly performs a batch (HWGW) against a target server. See also batch/stats.ts (batch-stats).
-Does not require Formulas.exe.
+Requires Formulas.exe.
 
 Usage: batch target [-p] [-h] [-s]
 Flags:
@@ -75,10 +75,12 @@ export async function main(ns: NS) {
 
         // wait remaining time
         if (saturation != -1) await ns.sleep((Math.floor(length / BATCH_INTERVAL) - sat) * BATCH_INTERVAL);
-        else await ns.sleep(BATCH_INTERVAL); // possible issue waiting for end of interval (maybe wait for middle?)
+        // else await ns.sleep(BATCH_STEP / 2);
 
         ns.print(`Completed cycle r=${ns.tFormat(runTime)}`);
-        await reset(ns, target, includeHome);
+        // await reset(ns, target, includeHome);
+
+        // await ns.sleep(BATCH_STEP / 2);
     }
 }
 
@@ -128,7 +130,7 @@ async function prep(ns: NS, target: string, includeHome: boolean) {
 
     const s = ns.getServerSecurityLevel(target); const ss = ns.getServerMinSecurityLevel(target);
     const g = ns.getServerMoneyAvailable(target); const gg = ns.getServerMaxMoney(target);
-    ns.print(`Finished preparation. Server is at ${s}/${ss} security at has ${ns.formatNumber(g)}/${ns.formatNumber(gg)} money`);
+    ns.print(`Finished preparation. Server is at ${s}/${ss} security and has ${ns.formatNumber(g)}/${ns.formatNumber(gg)} money`);
 }
 
 // note that this assumes 
@@ -188,9 +190,10 @@ function deploy(ns: NS, res: distributeResults, target: string): [number, number
             ns.scp(script, server);
             // TODO: add in case to catch when we arent able to execute script (pid = 0)
             pid = ns.exec(script, server, threads, target, offset);
+
             if (pid == 0) {
-                ns.print(server);
-                ns.print(`ERROR: cur ${ns.getServerMaxRam(server) - ns.getServerUsedRam(server)} req ${threads * ns.getScriptRam(script)}`);
+                ns.tprint(`ERROR: Unable to execute script on ${server}`);
+                ns.exit();
             }
         });
 

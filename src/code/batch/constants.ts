@@ -1,6 +1,6 @@
 export const HOME_RESERVED = 64;
 export const BATCH_STEP = 75; // time between h/g/w
-export const BATCH_INTERVAL = BATCH_STEP * 4 + 20;
+export const BATCH_INTERVAL = BATCH_STEP * 4;
 
 export interface distributeResults {
     hack: [string, number][], // where number is number of threads

@@ -10,6 +10,14 @@ export const CHILDREN = {
 
 /** Find the best servers to run each action on */
 export function distribute(ns: NS, hack: number, weakOne: number, grow: number, weakTwo: number, includeHome: boolean): distributeResults | undefined {
+    if (hack < 0 || weakOne < 0 || grow < 0 || weakTwo < 0) {
+        ns.tprint(`ERROR: Distribute was called with requested threads < 0 (h: ${hack}, g: ${grow}, w1: ${weakOne}, w2: ${weakTwo})`);
+        hack = Math.max(hack, 0);
+        grow = Math.max(grow, 0);
+        weakOne = Math.max(weakOne, 0);
+        weakTwo = Math.max(weakTwo, 0);
+    }
+
     const servers = allDeployableServers(ns, includeHome);
     // lowest ram first
     servers.sort((a, b) => 
@@ -64,6 +72,8 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
                 output.hack.push([s, hack]);
                 output.modifiedServers[s] = ava - hack * getRam(ns, 'h');
                 hack = 0;
+
+                break;
             }
         }
 
@@ -174,11 +184,16 @@ export function weakenThreadsNeeded(ns: NS, amt: number, thres = 0.05) { // 0.05
 }
 
 export function batchThreads(ns: NS, target: string, percent: number) {
-    const hackAmt = ns.getServerMaxMoney(target) * percent;
-    const hack = Math.floor(ns.hackAnalyzeThreads(target, hackAmt));
+    const server = ns.getServer(target);
+    server.hackDifficulty = server.minDifficulty!;
+    server.moneyAvailable = server.moneyMax!;
+
+    const hackPerThread = ns.formulas.hacking.hackPercent(server, ns.getPlayer());
+    const hack = Math.floor(percent / hackPerThread);
     const weakOne = weakenThreadsNeeded(ns, ns.hackAnalyzeSecurity(hack));
     // over count as buffer
-    const grow = Math.ceil(1.1 * ns.growthAnalyze(target, ns.getServerMaxMoney(target) / Math.max(ns.getServerMaxMoney(target) - hackAmt, 1)));
+    server.moneyAvailable -= server.moneyMax! * percent;
+    const grow = Math.ceil(1.1 * ns.formulas.hacking.growThreads(server, ns.getPlayer(), server.moneyMax!));
     const weakTwo = weakenThreadsNeeded(ns, ns.growthAnalyzeSecurity(grow));
 
     return [hack, weakOne, grow, weakTwo];

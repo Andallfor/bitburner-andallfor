@@ -51,6 +51,12 @@ export async function main(ns: NS) {
         const c = flags['b'] ? flags['b'] as number : flags['q'] as number;
 
         const base = ns.getPurchasedServerCost(2 ** c);
+
+        if (base == Infinity) {
+            ns.tprintf("ERROR: Invalid purchase RAM.");
+            return;
+        }
+
         let money = ns.getPlayer().money;
 
         const avaNewServers = ns.getPurchasedServerLimit() - servers.length;
