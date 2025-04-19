@@ -90,7 +90,7 @@ export async function main(ns: NS) {
 }
 
 // set server to min security and max money, allowing for it to happen over multiple cycles
-async function prep(ns: NS, target: string, includeHome: boolean) {
+export async function prep(ns: NS, target: string, includeHome: boolean) {
     // first check if we can do this in a batch call
     const weakOne = weakenThreadsNeeded(ns, ns.getServerSecurityLevel(target) - ns.getServerMinSecurityLevel(target));
     const grow = ns.getServerMaxMoney(target) == ns.getServerMoneyAvailable(target)
@@ -130,7 +130,7 @@ async function prep(ns: NS, target: string, includeHome: boolean) {
                 let ava = ns.getServerMaxRam(x) - ns.getServerUsedRam(x);
                 // not necessarily optimal either, as we sort above by max ram not accounting for weak distribution
                 if (x in dist.modifiedServers) ava = dist.modifiedServers[x];
-                ava -= x == 'home' ? HOME_RESERVED : 0;
+                ava = Math.max(0, ava - (x == 'home' ? HOME_RESERVED : 0));
 
                 const threads = Math.min(Math.floor(ava / getRam(ns, 'g')), growNeeded);
                 if (threads > 0) {

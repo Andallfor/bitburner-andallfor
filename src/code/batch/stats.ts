@@ -84,7 +84,7 @@ export async function main(ns: NS) {
 
     const totalCost = allDeployableServers(ns, useHome).reduce((prev, s) => {
         const r = prev + ns.getServerMaxRam(s);
-        return r - (s == 'home' ? HOME_RESERVED : 0)
+        return Math.max(0, r - (s == 'home' ? HOME_RESERVED : 0));
     }, 0);
         
 
@@ -149,7 +149,7 @@ export async function main(ns: NS) {
             state = 0;
 
             let serverState: Record<string, number> = {};
-            if (flags['m']) allDeployableServers(ns, useHome).forEach(x => serverState[x] = ns.getServerMaxRam(x) - (x == 'home' ? HOME_RESERVED : 0));
+            if (flags['m']) allDeployableServers(ns, useHome).forEach(x => serverState[x] = Math.max(0, ns.getServerMaxRam(x) - (x == 'home' ? HOME_RESERVED : 0)));
 
             // TODO: for some reason, saturation is not being calculated correctly (under estimate) and so this doesn't correctly simulate
             for (let i = 0; i < x.saturation; i++) {

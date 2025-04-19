@@ -7,13 +7,13 @@ export async function main(ns: NS) {
   / /   / _ \\  | ' \\  / _\` | / _\` | | | | | |  _| / _ \\ | '_|  / / 
  /_/   /_/ \\_\\ |_||_| \\__,_| \\__,_| |_| |_| |_|   \\___/ |_|   /_/  
 
-Last updated: 3/14/25
+Last updated: 3/17/25
 
 === TODO ===
-Have batch account for increasing player levels
 Improve/clean up singleAttack - maybe just remove?
 Better server/batch monitor.
 Generalize table printer.
+Fix/clarify share.ts - currently relies on batching to be able to prepare joesguns in one cycle.
 
 === Meta Information ===
 - Connect VSCode via 'npm run watch'

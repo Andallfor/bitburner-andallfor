@@ -93,3 +93,7 @@ export function pad(str: string, length: number) {
   for (let i = 1; i < length - baseLen; i++) str += ' ';
   return str;
 }
+
+export function toPercent(n: number, d = 0) {
+  return (n * 100).toFixed(d) + '%';
+}

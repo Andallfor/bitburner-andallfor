@@ -146,7 +146,7 @@ export function distribute(ns: NS, hack: number, weakOne: number, grow: number, 
 
 function getUsableRam(ns: NS, server: string, modifiedServers: Record<string, number>) {
     if (server in modifiedServers) return modifiedServers[server];
-    const max = ns.getServerMaxRam(server) - (server == 'home' ? HOME_RESERVED : 0);
+    const max = Math.max(0, ns.getServerMaxRam(server) - (server == 'home' ? HOME_RESERVED : 0));
     const cur = ns.getServerUsedRam(server);
 
     return max - cur;
@@ -156,6 +156,7 @@ export function runnable(ns: NS, server: string, attack: attackType) {
     const cur = ns.getServerUsedRam(server);
     let max = ns.getServerMaxRam(server);
     if (server == 'home') max -= HOME_RESERVED;
+    max = Math.max(0, max);
 
     return Math.floor((max - cur) / getRam(ns, attack));
 }

@@ -1,5 +1,5 @@
 import { NS } from "@ns";
-import { reset } from "/code/batch/main";
+import { prep, reset } from "/code/batch/main";
 import { run } from "/code/util/util";
 
 export async function main(ns: NS) {
@@ -13,7 +13,7 @@ export async function main(ns: NS) {
     const cost = ns.getScriptRam(file);
     const target = 'joesguns';
 
-    await reset(ns, target, false);
+    await prep(ns, target, false);
 
     const toRun: [string, number][] = [];
     const whitelist = flags['w'] as string[];
