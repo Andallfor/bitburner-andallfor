@@ -1,5 +1,6 @@
 import { AutocompleteData, CityName, CorpMaterialName, NS } from "@ns";
 import { Cities, Materials, Materials_s } from "../util/data";
+import { waitUntilNext } from "../util/util";
 
 export function autocomplete(data: AutocompleteData, args: string[]) {
     const cities = [...Cities, 'ALL'];
@@ -80,16 +81,7 @@ export async function main( ns: NS ) {
 
     if (flags['s']) {
         ns.tprintf('Waiting for next cycle...');
-        // this is buy per second, so cancel after one cycle
-        // wait until we see a purchase as next and previous state (in that order)
-        let next = false;
-        while (true) {
-            if (!next) next = ns.corporation.getCorporation().nextState == 'PURCHASE';
-            else if (ns.corporation.getCorporation().prevState == 'PURCHASE') break;
-
-            // at base each cycle takes 10 seconds - 5 states, so 2 seconds each. however with bonus time a cycle goes down to 1 second, i.e. each state takes 0.2 seconds
-            await ns.sleep(200);
-        }
+        await waitUntilNext(ns, 'PURCHASE');
 
         // now cancel our purchases
         for (let i = 0; i < cities.length; i++) ns.corporation.buyMaterial(division, cities[i] as CityName, material, 0);

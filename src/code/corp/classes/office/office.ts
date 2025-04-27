@@ -1,36 +1,16 @@
-import { CityName, CorpMaterialName, Corporation, Material, NS, Office, Warehouse } from "@ns";
-import { P_Research } from "./research";
+import { CityName, CorpEmployeePosition, CorpMaterialName, Corporation, Material, NS, Office, Warehouse } from "@ns";
+import { _Office_Calculations } from "./office_c";
 
 // TODO: assumes material
 export class P_Office {
-    private ns: NS;
-    public readonly div: string;
-    public readonly city: CityName;
     private c: Corporation;
+    public readonly calc: _Office_Calculations;
 
-    public constructor(ns: NS, div: string, city: CityName) {
-        this.ns = ns;
-        this.div = div;
-        this.city = city;
+    public constructor(private ns: NS, public readonly div: string, public readonly city: CityName) {
         this.c = ns.corporation;
+        this.calc = new _Office_Calculations(ns, div, city, this);
 
         this.getImports().forEach(x => this.importBuffer[x.name] = []);
-    }
-
-    public getMaxMatProd(res: P_Research) {
-        // https://github.com/bitburner-official/bitburner-src/blob/stable/src/Documentation/doc/advanced/corporation/division-raw-production.md
-        // https://github.com/bitburner-official/bitburner-src/blob/43c3a257de42ccf533ef1c0d80a328c1bc3bb927/src/Corporation/ui/DivisionOffice.tsx#L107
-        const o = this.get();
-        const jobs = o.employeeProductionByJob;
-        const off_mult = 
-            0.05 * 
-            (Math.pow(jobs.Operations, 0.4) + Math.pow(jobs.Engineer, 0.3)) * 
-            (1 + jobs.Management / (1.2 * (jobs.Operations + jobs.Engineer + jobs.Management)));
-        const div_mult = this.c.getDivision(this.div).productionMult;
-        const upg_mult = 1 + this.c.getUpgradeLevel('Smart Factories') * 0.03;
-        const res_mult = res.getMatProd();
-
-        return off_mult * div_mult * upg_mult * res_mult;
     }
 
     private warehouseBuffer: number[] = [];

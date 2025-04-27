@@ -1,6 +1,6 @@
 import { CityName, CorpIndustryName, CorpMaterialName, NS } from "@ns";
 import { toColor, toGreen, toPink, toRed, toWhite } from "/code/util/colors";
-import { P_Office } from "../classes/office";
+import { P_Office } from "../classes/office/office";
 import { Cities } from "../util/data";
 import { table } from "/code/util/table";
 import { P_Research } from "../classes/research";
@@ -82,7 +82,7 @@ export async function main(ns: NS) {
                 'importWaste': 0,
             };
 
-            const maxMatProd = office.getMaxMatProd(research);
+            const maxMatProd = office.calc.get_materialProduction(research);
             const [_, max, total] = office.getWarehouseUsage();
             const warehouse = max / total;
 
@@ -115,7 +115,7 @@ export async function main(ns: NS) {
             const imports = office.getImports().map(x => {
                 const total = x.buyAmount + x.importAmount;
                 const ratio = x.importAmount / total;
-                const qual = x.quality;
+                const qual = x.quality; // TODO: buffer for quality average
                 const waste = importWaste[x.name];
 
                 return `${total.toFixed()} (${toPercent(ratio)}) @ ${qual.toFixed()} → ${waste.toFixed()}`
