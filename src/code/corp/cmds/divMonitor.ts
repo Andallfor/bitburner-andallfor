@@ -82,7 +82,7 @@ export async function main(ns: NS) {
                 'importWaste': 0,
             };
 
-            const maxMatProd = office.calc.get_materialProduction(research);
+            const maxMatProd = await office.calc.get_materialProduction(research);
             const [_, max, total] = office.getWarehouseUsage();
             const warehouse = max / total;
 

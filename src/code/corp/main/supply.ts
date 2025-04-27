@@ -18,6 +18,8 @@ async function test(ns: NS) {
     
     const office = new P_Office(ns, div, city as CityName);
     const res = new P_Research(ns, div);
+    const c = ns.corporation;
+    const d = c.getIndustryData(c.getDivision(div).type);
     // const [x, y, z, w] = office.calc.opt_boost(550);
 
     // const [a, b, c] = await office.calc.opt_materialProductionJobs();
@@ -31,25 +33,21 @@ async function test(ns: NS) {
     ns.tprintf(`hardware ${y}`);
     ns.tprintf(`robots ${z}`);
     ns.tprintf(`ai cores ${w}`);
+
     const size = x * 0.005 + y * 0.06 + z * 0.5 + w * 0.1;
-    const b = office.calc.get_boost(x, y, z, w);
-    ns.tprintf(`expected boost ${b}`);
-    const p = await office.calc.get_materialProduction(res, jobs, b);
-    ns.tprintf(`expected production: ${p}`);
-    ns.tprintf(`production size: ${office.getExports().reduce((acc, x) => acc + ns.corporation.getMaterialData(x.name).size * p, 0)}`)
     ns.tprintf(`${size}\n\n`);
 
-    const [xx, yy, zz, ww] = office.calc.opt_boost(size);
-    ns.tprintf(`real estate ${xx}`);
-    ns.tprintf(`hardware ${yy}`);
-    ns.tprintf(`robots ${zz}`);
-    ns.tprintf(`ai cores ${ww}`);
-    const size2 = xx * 0.005 + yy * 0.06 + zz * 0.5 + ww * 0.1;
-    const b2 = office.calc.get_boost(xx, yy, zz, ww);
-    ns.tprintf(`expected boost ${b2}`);
-    const p2 = await office.calc.get_materialProduction(res, jobs, b2);
-    ns.tprintf(`expected production: ${p2}`);
-    ns.tprintf(`production size: ${office.getExports().reduce((acc, x) => acc + ns.corporation.getMaterialData(x.name).size * p2, 0)}`)
-    ns.tprintf(`${size2}\n\n`);
+    const b = office.calc.get_boostTotal(x, y, z, w);
+    ns.tprintf(`expected boost ${b}`);
 
+    const p = await office.calc.get_materialProduction(res, jobs, b);
+    ns.tprintf(`expected production: ${p}`);
+
+    const m = Math.max(
+        Object.entries(d.requiredMaterials).reduce((acc, x) => acc + c.getMaterialData(x[0] as CorpMaterialName).size * x[1], 0),
+        d.producedMaterials!.reduce((acc, x) => acc + c.getMaterialData(x).size, 0)
+    );
+    const ss = m * p;
+    ns.tprintf(`prod size ${ss}`);
+    ns.tprintf(`total size ${ss + size}`)
 }

@@ -163,8 +163,8 @@ export class _Office_Calculations {
 
     // assume material
     // assumes all cities have been expanded to
-    public async opt_boostSize(res: P_Research, buffer = 0.1) {
-        /* TODO:
+    public async opt_boostSize(res: P_Research, buffer = 0.1, step = 20) {
+        /*
          * Two realizations:
          * 1. opt_boost for a given size is a (basically) constant time function
          * 2. boost multiplier is an increasing function with respect to storage size
@@ -175,117 +175,56 @@ export class _Office_Calculations {
          * thus we can search for the greatest x such that the space taken up by it is equal to storage space
          */
 
-        
+        const [[cx, sx], [cy, sy], [cz, sz], [cw, sw]] = this.boostData;
+        const baseBoost = this.c.getDivision(this.div).productionMult - this.get_boost(
+            this.c.getMaterial(this.div, this.city, "Real Estate").stored,
+            this.c.getMaterial(this.div, this.city, "Hardware").stored,
+            this.c.getMaterial(this.div, this.city, "Robots").stored,
+            this.c.getMaterial(this.div, this.city, "AI Cores").stored);
 
-        // f = boost(x, y, z, w) (i.e. real estate, hardware, robots, ai cores)
-        //     Does not include the ^0.73 (in productionMult), this is accounted for in g, h (when we need the exact prod)
-        // import material size of production + boost size < max capacity
-        //     g = (sum of import material coefficients) * production(...) + boost_size(...) - max capacity
-        // produced material size of production + boost size < max capacity
-        //     h = (sum of produced material coefficients) * production(...) + boost_size(...) - max capacity
-        // boost size
-        //     k = sx * x + sy * y + sz * z + sw * w 
-        // note import and produced are separate since they are calculated in different corp stage and shouldnt ever be in storage at the same time
-
-        // https://machinelearningmastery.com/lagrange-multiplier-approach-with-inequality-constraints/
-        // L = f(...) + l * g(...) + p * h(...) where l, p >= 0
-
-        const S = this.c.getWarehouse(this.div, this.city).size * (1 - buffer);
-        const d = this.c.getIndustryData(this.c.getDivision(this.div).type);
-        const [cx, sx] = [d.realEstateFactor!, this.c.getMaterialData('Real Estate').size];
-        const [cy, sy] = [d.hardwareFactor!, this.c.getMaterialData('Hardware').size];
-        const [cz, sz] = [d.robotFactor!, this.c.getMaterialData('Robots').size];
-        const [cw, sw] = [d.aiCoreFactor!, this.c.getMaterialData('AI Cores').size];
-
-        function f(x: number, y: number, z: number, w: number) {
-            return Math.pow(1 + 0.002 * x, cx) * Math.pow(1 + 0.002 * y, cy) * Math.pow(1 + 0.002 * z, cz) * Math.pow(1 + 0.002 * w, cw);
-        }
-
-        function k(x: number, y: number, z: number, w: number) {
-            return sx * x + sy * y + sz * z + sw * w;
-        }
-
-        // TODO: important! i, e are constant so we can just take their max and use it in one step
-        const i = Object.entries(d.requiredMaterials).reduce((acc, x) => acc + this.c.getMaterialData(x[0] as CorpMaterialName).size * x[1], 0); // sum of size * coefficient
-        const e = d.producedMaterials!.reduce((acc, x) => acc + this.c.getMaterialData(x).size, 0);
+        const [jchange, jx, jy, jz] = await this.fmtProdJobs("INFO: (opt_boostSize) formatting jobs");
         const jobs = this.parent.get().employeeJobs;
-        const o = Cities.reduce((acc, c) => {
-            if (c == this.city) return acc;
-            const x = this.c.getMaterial(this.div, c as CityName, 'Real Estate').stored;
-            const y = this.c.getMaterial(this.div, c as CityName, 'Hardware').stored;
-            const z = this.c.getMaterial(this.div, c as CityName, 'Robots').stored;
-            const w = this.c.getMaterial(this.div, c as CityName, 'AI Cores').stored;
-            return acc + Math.pow(f(x, y, z, w), 0.73);
-        }, 0);
-
-        // material production ignoring production mult from this city (but including other cities)
         const [jo, js, jm] = await this.opt_materialProductionJobs(jobs["Research & Development"], jobs.Business, jobs.Intern);
-        const m = await this.get_materialProduction(res, this.formatJobs(jo, js, jm, 0, 0, 0), 1);
 
-        function dx([x, y, z, w, l, p]: number[]) {
-            // df/dx + d/dx(f(...)^0.73)(lim + oem) + dk/dx(l + p)
-            const ff = f(0, y, z, w);
-            const a = ff * (0.002 * Math.pow(1 + 0.002 * x, cx - 1) * cx);
-            const b = ff * (0.00146 * Math.pow(1 + 0.002 * x, 0.73 * cx - 1) * cx);
+        const d = this.c.getIndustryData(this.c.getDivision(this.div).type);
+        // size of import and produced should not occur at the same time, so we can consider them separate and just take the max
+        const m = Math.max( // m * amt material production = size of material (max of imp materials or prod materials)
+            // (size_1 * coeff_1 * amt) + (size_2 * coeff_2 * amt) + ... = (size_1 * coeff_1 + size_2 * coeff_2 + ...) * amt
+            Object.entries(d.requiredMaterials).reduce((acc, x) => acc + this.c.getMaterialData(x[0] as CorpMaterialName).size * x[1], 0),
+            d.producedMaterials!.reduce((acc, x) => acc + this.c.getMaterialData(x).size, 0)
+        );
 
-            return a + b * (l * i * m + o * e * m) + sx * (l + p);
+        let out = [0, 0, 0, 0];
+        const max = this.c.getWarehouse(this.div, this.city).size * (1 - buffer);
+        let left = 0; let right = Math.floor(max / step);
+        while (left <= right) {
+            const size = step * Math.floor((left + right) / 2);
+
+            const [x, y, z, w] = this.opt_boost(size);
+            const b = baseBoost + this.get_boost(x, y, z, w);
+            const p = await this.get_materialProduction(res, this.formatJobs(jo, js, jm), b);
+
+            const sb = sx * x + sy * y + sz * z + sw * w;
+            const sp = m * p;
+            const s = sb + sp; // total size taken up
+
+            if (s > max) right = size / 20 - 1;
+            else left = size / 20 + 1;
+
+            out = [x, y, z, w];
         }
 
-        function dy([x, y, z, w, l, p]: number[]) {
-            const ff = f(x, 0, z, w);
-            const a = ff * (0.002 * Math.pow(1 + 0.002 * y, cy - 1) * cy);
-            const b = ff * (0.00146 * Math.pow(1 + 0.002 * y, 0.73 * cy - 1) * cy);
+        if (jchange) { // TODO: move into own function
+            this.c.setAutoJobAssignment(this.div, this.city, 'Operations', 0);
+            this.c.setAutoJobAssignment(this.div, this.city, 'Engineer', 0);
+            this.c.setAutoJobAssignment(this.div, this.city, 'Management', 0);
 
-            return a + b * (l * i * m + o * e * m) + sy * (l + p);
+            this.c.setAutoJobAssignment(this.div, this.city, 'Operations', jx as number);
+            this.c.setAutoJobAssignment(this.div, this.city, 'Engineer', jy as number);
+            this.c.setAutoJobAssignment(this.div, this.city, 'Management', jz as number);
+
+            await waitUntilNext(this.ns, 'START');
         }
-
-        function dz([x, y, z, w, l, p]: number[]) {
-            const ff = f(x, y, 0, w);
-            const a = ff * (0.002 * Math.pow(1 + 0.002 * z, cz - 1) * cz);
-            const b = ff * (0.00146 * Math.pow(1 + 0.002 * z, 0.73 * cz - 1) * cz);
-
-            return a + b * (l * i * m + o * e * m) + sz * (l + p);
-        }
-
-        function dw([x, y, z, w, l, p]: number[]) {
-            const ff = f(x, y, z, 0);
-            const a = ff * (0.002 * Math.pow(1 + 0.002 * w, cw - 1) * cw);
-            const b = ff * (0.00146 * Math.pow(1 + 0.002 * w, 0.73 * cw - 1) * cw);
-
-            return a + b * (l * i * m + o * e * m) + sw * (l + p);
-        }
-
-        function dl([x, y, z, w, l, p]: number[]) { return i * m * o + i * m * Math.pow(f(x, y, z, w), 0.73) + k(x, y, z, w) - S; }
-        function dp([x, y, z, w, l, p]: number[]) { return e * m * o + e * m * Math.pow(f(x, y, z, w), 0.73) + k(x, y, z, w) - S; }
-
-        const solver = new Ceres();
-        solver.addFunction(dx);
-        solver.addFunction(dy);
-        solver.addFunction(dz);
-        solver.addFunction(dw);
-        solver.addFunction(dl);
-        solver.addFunction(dp);
-
-        solver.addLowerbound(0, 0);
-        solver.addLowerbound(1, 0);
-        solver.addLowerbound(2, 0);
-        solver.addLowerbound(3, 0);
-        solver.addLowerbound(4, 0);
-        solver.addLowerbound(5, 0);
-
-        const max_iter = 30;
-        const parameter_tol = 1e-10;
-        const func_tol = 1e-16;
-        const grad_tol = 1e-16;
-        const max_time = 1; // sec
-        const size = this.c.getWarehouse(this.div, this.city).size / 3 / 4;
-        const sol = await solver.solve(
-            [size / sx, size / sy, size / sz, size / sw, 1, 1],
-            max_iter, parameter_tol, func_tol, grad_tol, max_time);
-        const out = sol.x.slice(0, 4).map(x => Math.floor(x));
-
-        this.ns.tprintf(sol.report);
-        solver.remove();
 
         return out;
     }
@@ -309,7 +248,13 @@ export class _Office_Calculations {
      * Get the boost mult, accounting for all other cities (defaulting to what they currently have stored) but with this city's boost materials changed
      */
     public get_boostTotal(realEstate: number, hardware: number, robots: number, aiCores: number) {
-
+        const base = this.c.getDivision(this.div).productionMult - this.get_boost(
+            this.c.getMaterial(this.div, this.city, "Real Estate").stored,
+            this.c.getMaterial(this.div, this.city, "Hardware").stored,
+            this.c.getMaterial(this.div, this.city, "Robots").stored,
+            this.c.getMaterial(this.div, this.city, "AI Cores").stored);
+        
+        return base + this.get_boost(realEstate, hardware, robots, aiCores);
     }
 
     /**
@@ -359,10 +304,10 @@ export class _Office_Calculations {
         const upg_mult = 1 + this.c.getUpgradeLevel('Smart Factories') * 0.03;
         const res_mult = res.getMatProd();
 
-        return off_mult * div_mult * upg_mult * res_mult;
+        return off_mult * div_mult * upg_mult * res_mult * 10;
     }
 
-    public formatJobs(op: number, eng: number, man: number, res: number, bus: number, int: number): Record<CorpEmployeePosition, number> {
+    public formatJobs(op = 0, eng = 0, man = 0, res = 0, bus = 0, int = 0): Record<CorpEmployeePosition, number> {
         return {
             'Operations': op,
             'Engineer': eng,
